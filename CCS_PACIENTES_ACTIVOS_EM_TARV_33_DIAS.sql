@@ -345,7 +345,6 @@ FROM
 		) gaaac ON gaaac.member_id=inicio_real.patient_id
         
         /************  Peso  *********************/
-
         left join 
 		(Select ultimavisita.patient_id,ultimavisita.encounter_datetime,o.value_numeric peso
 			from
