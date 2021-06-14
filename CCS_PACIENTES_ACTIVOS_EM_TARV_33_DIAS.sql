@@ -1,11 +1,18 @@
-/*USE openmrs;
-SET :startDate:='2015-01-21';
-SET :endDate:='2021-06-06';
-SET :location:= 208;
+/*
+Name:CCS ACTUALMENTE EM TARV 33 DIAS
+Description:
+              - Pacientes actualmente em tarv, com data do proximo seguimento nao superior a data corremte em 28 dias
 
-*/
--- Change 06/06/2021
+Created By: Colaco C.
+Created Date: NA
+
+Change by: Agnaldo  Samuel
+Change Date: 06/06/2021 
+Change Reason: Bug fix
+-- Peso e altura incorrecta ( Anibal J.) 
+-- Excluir ficha resumo e APPSS na determinacao da ultima visita
 -- Revelacao de diagnostico da ficha clinica ( Mauricio T.)
+*/
 
 SELECT * 
 FROM 
@@ -551,34 +558,20 @@ SELECT 	e.patient_id,
 
           /* ******************************** ultima carga viral *********** ******************************/
         LEFT JOIN(  
-         SELECT ult_cv.patient_id, e.encounter_datetime , o.value_numeric as carga_viral , e.encounter_type, ult_cv.data_ult_carga
-			FROM	
-				(  SELECT   patient_id , max(data_ult_carga)  data_ult_carga , valor_cv
-					FROM
+          SELECT ult_cv.patient_id, e.encounter_datetime , o.value_numeric as carga_viral , e.encounter_type, ult_cv.data_ult_carga
+			FROM
                     (  
 						   SELECT 	e.patient_id,
-									o.value_numeric valor_cv,
 									max(e.encounter_datetime)  data_ult_carga
 							FROM 	encounter e
 									inner join obs o on e.encounter_id=o.encounter_id
-							where 	e.encounter_type in (13,6,9) and e.voided=0 and o.voided=0 and o.concept_id=856  
+							where 	e.encounter_type in (13,6,9,53) and e.voided=0 and o.voided=0 and o.concept_id=856  
 							group by e.patient_id 
-                    
-				    UNION ALL
-                
-							SELECT 	e.patient_id,
-									o.value_numeric valor_cv,
-									max(o.obs_datetime)  data_ult_carga
-							FROM 	encounter e
-									inner join obs o on e.encounter_id=o.encounter_id
-							where 	e.encounter_type = 53 and e.voided=0 and o.voided=0 and o.concept_id=856 
-							group by e.patient_id ) all_cv group by patient_id 
-						
-						) ult_cv
+                    						) ult_cv
                 inner join encounter e on e.patient_id=ult_cv.patient_id
 				inner join obs o on o.encounter_id=e.encounter_id 
-                where o.obs_datetime=ult_cv.data_ult_carga
-			     AND o.concept_id=856 and o.voided=0 AND e.voided=0
+                where e.encounter_datetime=ult_cv.data_ult_carga
+			     AND o.concept_id=856 and 	e.encounter_type in (13,6,9,53) and o.voided=0 AND e.voided=0 
 			group by patient_id
 		
 		) cv ON cv.patient_id =  inicio_real.patient_id

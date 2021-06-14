@@ -1,4 +1,21 @@
+/*
+Name: CCS LISTA DE ABANDONOS NÃO NOTIFICADOS AO TARV (TX_ML)
+Description:
+              -  Usando os critérios do indicador TX_ML  (OpenMRS TX_ML Indicator Specification and Requirements_v2.7.4.dox )
+              -  https://www.dropbox.com/s/t22b3ggfd071vfq/OpenMRS%20TX_ML%20Indicator%20Specification%20and%20Requirements_v2.7.4.docx?dl=0
 
+
+Created By: Agnaldo Samuel
+Created Date: 18-11-2020
+
+Change by: Agnaldo  Samuel
+Change Date: 06/06/2021 
+Change Reason: Bug fix
+
+
+
+
+*/
 SELECT *
 FROM
 (	SELECT 	inicio_real.patient_id,
@@ -207,14 +224,13 @@ WHERE data_inicio <=:endDate
                     
 					UNION
 					
-					SELECT 	p.patient_id,MAX(value_datetime) encounter_datetime,DATE_ADD(MAX(value_datetime), INTERVAL 30 DAY) AS value_datetime -- ,  'Recepcao- Levantou ARV' as 'source' 
-					FROM 	patient p
-							INNER JOIN encounter e ON p.patient_id=e.patient_id
+					SELECT 	e.patient_id,MAX(value_datetime) encounter_datetime,DATE_ADD(MAX(value_datetime), INTERVAL 30 DAY) AS value_datetime -- ,  'Recepcao- Levantou ARV' as 'source' 
+					FROM 	encounter e
 							INNER JOIN obs o ON e.encounter_id=o.encounter_id
-					WHERE 	p.voided=0 AND e.voided=0 AND o.voided=0 AND e.encounter_type=52 AND 
+					WHERE  e.voided=0 AND o.voided=0 AND e.encounter_type=52 AND 
 							o.concept_id=23866 AND o.value_datetime IS NOT NULL AND 
 							o.value_datetime<=:endDate AND e.location_id=:location     
-					GROUP BY p.patient_id                 
+					GROUP BY e.patient_id                 
                     UNION 
                     
                     SELECT ultimaconsulta.patient_id,ultimaconsulta.encounter_datetime,o.value_datetime -- , 'Master Card - Ficha Clinica' as 'source' 
@@ -262,7 +278,7 @@ WHERE data_inicio <=:endDate
                     INNER JOIN obs o ON e.encounter_id=o.encounter_id
 					WHERE e.voided=0 AND o.voided=0 AND e.encounter_type=52 AND 
 							o.concept_id=23866 AND o.value_datetime IS NOT NULL AND e.location_id=:location     
-					GROUP BY p.patient_id                 
+					GROUP BY e.patient_id                 
                     UNION 
                     
                     SELECT ultimaconsulta.patient_id,ultimaconsulta.encounter_datetime
@@ -350,7 +366,7 @@ WHERE data_inicio <=:endDate
 					 END AS motivo_saida 
 					 FROM 	(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime
 						FROM 	encounter e 
-								INNER JOIN obs o p ON o.patient_id=e.patient_id 		
+								INNER JOIN obs o  ON o.encounter_id=e.encounter_id 		
 						WHERE 	e.voided=0 AND o.voided=0 AND e.encounter_type=21 AND o.concept_id =2016 AND e.location_id=:location AND 
 								e.encounter_datetime<=:endDate 
 						GROUP BY e.patient_id
