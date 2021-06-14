@@ -1,15 +1,16 @@
+
 /*
-Name:CCS SQL PACIENTES ELEGIVEIS A CV GRAVIDAS
+Name:CCS SQL PACIENTES ELEGIVEIS A CV LACTANTES
 Type: SQL Dataset
-Description: 1. Em TARV a pelo menos 3 meses antes da na CPN 2. Em TARV há mais de 3 mese ( se tiver iniciado o TARV na CPN) 
-3. Resultado anterior de CV>1000copias/ml há mais de 3 meses 4. Não ter resultados de CV nos últimos 6 meses
+Description: 
 
-
-Change by: Agnaldo  Samuel
-Changed Date: 14/06/2021 
+Changed by: Agnaldo  Samuel
+Change Date: 14/06/2021 
 Change Reason: Bug fix
 -- Excluir mulheres gravidas que tem pedido de cv feito a menos de 2 meses
 */
+
+
 SELECT * 
 FROM 
 ( SELECT 	inicio_real.patient_id,
@@ -18,18 +19,20 @@ FROM
 			p.gender,
             ROUND(DATEDIFF(:endDate,p.birthdate)/365) idade_actual,
             DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') as data_inicio,
-            DATE_FORMAT(inicio_real.data_gravida,'%d/%m/%Y') as data_gravida,
-                  --   inscrito_smi.date_completed as date_completed_smi ,
-                    -- inscrito_ccr.date_completed as date_completed_ccr,
-			DATE_FORMAT(inicio_tpi.data_inicio_tpi ,'%d/%m/%Y') as data_inicio_tpi ,
-             DATE_FORMAT(ult_pedido_cv.data_ult_pedido_cv,'%d/%m/%Y') as data_ult_pedido_cv,
-             ultima_linha.linhat ultima_linhat,
-          DATE_FORMAT(ultima_linha.data_linhat,'%d/%m/%Y') as data_ult_linha,
+	    DATE_FORMAT(inicio_tpi.data_inicio_tpi ,'%d/%m/%Y') as data_inicio_tpi ,
             cv.value_numeric valor_ult_cv,
-            cv.data_ult_cv,
+            DATE_FORMAT(cv.data_ult_cv,'%d/%m/%Y') as data_ult_cv,
+            
+             DATE_FORMAT(ult_pedido_cv.data_ult_pedido_cv,'%d/%m/%Y') as data_ult_pedido_cv,
+                         DATE_FORMAT(inicio_real.date_enrolled,'%d/%m/%Y') as date_enrolled,
+             DATEDIFF(cv.data_ult_cv , inicio_real.date_enrolled )/30 as tempo_pass,
+          cv_qualitativa.carga_viral_qualitativa,
+            cv_qualitativa.data_cv_qualitativa,
             ultimo_regime.regime,
-            ultimo_regime.data_regime,
-            CONCAT( if(inscrito_tb.date_enrolled is null,'','TB '),'',if(inscrito_smi.date_enrolled is null,'','_SMI'),' ',if(inscrito_ccr.date_enrolled is null,'','_CCR')) AS proveniencia,
+            DATE_FORMAT(ultimo_regime.data_regime,'%d/%m/%Y') as data_regime,
+            ultima_linha.linhat ultima_linhat,
+          DATE_FORMAT(ultima_linha.data_linhat,'%d/%m/%Y') as data_ult_linha,
+             CONCAT( if(inscrito_tb.date_enrolled is null,'','TB '),'',if(inscrito_smi.date_enrolled is null,'','_SMI'),' ',if(inscrito_ccr.date_enrolled is null,'','_CCR')) AS proveniencia,
 			telef.value AS telefone,
 		    pad3.county_district AS 'Distrito',
 			pad3.address2 AS 'Padministrativo',
@@ -41,7 +44,7 @@ FROM
 	FROM	
 	(	
     
-       SELECT criterio_1.patient_id, criterio_1.data_inicio, ultimavisita.value_datetime as prox_visita, gravida_real.data_gravida
+       SELECT criterio_1.patient_id, criterio_1.data_inicio, ultimavisita.value_datetime as prox_visita ,lactante_real.date_enrolled
 	FROM ( 
        
        select * from (
@@ -82,41 +85,34 @@ FROM
 									
 			) inicio  GROUP BY patient_id	) inicio_2
             
-              /* 1. Em TARV há mais de 3 meses*/
-            where DATEDIFF(:endDate,inicio_2.data_inicio)/30 >=3
-
-	) criterio_1
-INNER JOIN 
-         /***************************** gravida    *************************************************/
-	(	select patient_id,max(data_gravida) as data_gravida
+ 	) criterio_1
+     
+     /************************* LACTANTES *********************************************/
+     INNER JOIN  (	select patient_id,max(date_enrolled) as date_enrolled
 		from
-			(Select p.patient_id,max(obs_datetime) data_gravida
+			(Select p.patient_id,max(obs_datetime) date_enrolled
 			from 	patient p 
 					inner join encounter e on p.patient_id=e.patient_id
 					inner join obs o on e.encounter_id=o.encounter_id
-			where 	p.voided=0 and e.voided=0 and o.voided=0 and concept_id = 1982 and value_coded = 1065 
-					and e.encounter_type =6 and o.obs_datetime between date_sub(:endDate, interval 6 MONTH) and  :endDate  and 
+			where 	p.voided=0 and e.voided=0 and o.voided=0 and concept_id = 6332 and value_coded = 1065 
+					and e.encounter_type =6 and o.obs_datetime between date_sub(:endDate, interval 18 MONTH) and :endDate  and 
 					e.location_id=:location
 			group by p.patient_id
 			
 			union
 			
-			select pp.patient_id,pp.date_enrolled as data_gravida
-			from 	patient_program pp 
-			where 	pp.program_id in (3,4,8) and pp.voided=0 and  pp.date_completed is null and
-					pp.date_enrolled between  date_sub(:endDate, interval 9 MONTH) and  :endDate  and pp.location_id=:location
-			) gravida
-            
-          
-		group by patient_id
-	) gravida_real ON gravida_real.patient_id=criterio_1.patient_id 
-             INNER JOIN	 (
-            select pp.patient_id,pp.date_enrolled as data_gravida , date_completed
-			from 	patient_program pp 
-			where 	pp.program_id in (3,4,8) and pp.voided=0 and  
-					pp.date_enrolled between  date_sub(:endDate, interval 9 MONTH) and  :endDate  and pp.location_id=:location
-            ) inscricao_ptv on inscricao_ptv.patient_id=criterio_1.patient_id and inscricao_ptv.date_completed is null
-        INNER JOIN		
+     	     select 	pgg.patient_id,max(pgg.date_enrolled) as date_enrolled
+						from 	patient pt inner join patient_program pgg on pt.patient_id=pgg.patient_id
+						where 	pgg.voided=0 and pt.voided=0 and pgg.program_id=6 and pgg.date_completed is null 
+						and pgg.date_enrolled between date_sub(:endDate, interval 18 MONTH) and :endDate  and pgg.location_id=:location
+						group by pgg.patient_id
+			) lactante 
+		
+        group by patient_id
+        
+	) lactante_real ON lactante_real.patient_id=criterio_1.patient_id 
+    
+     INNER JOIN		
 		(	SELECT ultimavisita.patient_id,ultimavisita.encounter_datetime,o.value_datetime,e.location_id
 			FROM
 				(	SELECT 	p.patient_id,MAX(encounter_datetime) AS encounter_datetime
@@ -130,16 +126,15 @@ INNER JOIN
 				LEFT JOIN obs o ON o.encounter_id=e.encounter_id AND (o.concept_id=5096 OR o.concept_id=1410)AND e.encounter_datetime=ultimavisita.encounter_datetime			
 			WHERE  o.voided=0  AND e.voided =0 AND e.encounter_type IN (6,9,18) AND e.location_id=:location
 		) ultimavisita ON ultimavisita.patient_id=criterio_1.patient_id and DATEDIFF(:endDate,ultimavisita.value_datetime) <= 28
-        
-
+       
 	)inicio_real
 		INNER JOIN person p ON p.person_id=inicio_real.patient_id
-
-	  /***********************   4. ultima carga viral nos ultimos 6 meses  *********************************/
-      /*******************************************************************************************************/
+     
+     /***********************   4. ultima carga viral nos ultimos 18 meses  *********************************/
+     /*******************************************************************************************************/
         LEFT JOIN
         (
-        		SELECT ult_cv.patient_id, e.encounter_datetime data_ult_cv, o.value_numeric
+        	SELECT ult_cv.patient_id, e.encounter_datetime data_ult_cv, o.value_numeric
 					FROM
                     (  
 						   SELECT 	e.patient_id,
@@ -147,7 +142,7 @@ INNER JOIN
 									max(e.encounter_datetime)  data_ult_carga
 							FROM 	encounter e
 									inner join obs o on e.encounter_id=o.encounter_id
-							where 	e.encounter_type in (13,6,9,53) and e.voided=0 and encounter_datetime between date_sub(:endDate, interval 6 MONTH) and  :endDate  
+							where 	e.encounter_type in (13,6,9,53) and e.voided=0 and encounter_datetime between date_sub(:endDate, interval 18 MONTH) and  :endDate  
 									and o.voided=0 and o.concept_id=856  and 	e.location_id=:location
 							group by e.patient_id 
 						
@@ -158,8 +153,7 @@ INNER JOIN
 			     AND o.concept_id=856 and o.voided=0 AND e.voided=0
 			group by patient_id
 		) cv on cv.patient_id=inicio_real.patient_id 
-
-/************************** CV qualitativa *******************************************************/
+     /************************** CV qualitativa *******************************************************/
         left join ( SELECT 	e.patient_id,
 				CASE o.value_coded
                 WHEN 1306  THEN  'Nivel baixo de detencao'
@@ -178,7 +172,7 @@ INNER JOIN
 							SELECT 	e.patient_id,max(encounter_datetime) as data_cv_qualitativa
 							from encounter e inner join obs o on e.encounter_id=o.encounter_id
 							where e.encounter_type IN (6,9,13) AND e.voided=0 AND o.voided=0 AND o.concept_id = 1305 
-                            and encounter_datetime between date_sub(:endDate, interval 6 MONTH) and  :endDate
+                            and encounter_datetime between date_sub(:endDate, interval 18 MONTH) and  :endDate
 							group by patient_id
 				) ult_cv 
                 on e.patient_id=ult_cv.patient_id
@@ -188,30 +182,8 @@ INNER JOIN
 				o.voided=0 AND 	o.concept_id=1305
                 group by e.patient_id ) cv_qualitativa on cv_qualitativa.patient_id = inicio_real.patient_id
 
-            	/** **************************************** TPI  **************************************** **/
-            left join
-			(	select patient_id, max(data_inicio_tpi) as data_inicio_tpi
-            from ( select e.patient_id,max(value_datetime) data_inicio_tpi
-				from	encounter e
-						inner join obs o on o.encounter_id=e.encounter_id
-				where 	e.voided=0  and
-						o.voided=0 and o.concept_id=6128 and e.encounter_type in (6,9,53) and e.location_id=:location
-				group by e.patient_id
-				
-				union
-				
-				select e.patient_id,max(e.encounter_datetime) data_inicio_tpi
-				from	 encounter e 
-						inner join obs o on o.encounter_id=e.encounter_id
-				where 	e.voided=0 and
-						o.voided=0 and o.concept_id=6122 and o.value_coded=1256 and e.encounter_type in (6,9) and e.location_id=:location
-				group by e.patient_id
-				 ) tpi_ficha_segui_clinc group by patient_id
-                 
-			) inicio_tpi on inicio_tpi.patient_id=inicio_real.patient_id
-         
-
-  /******************************  Ultima linha  ****************************************************/
+ 
+     /******************************  Ultima linha  ****************************************************/
        LEFT JOIN
         (	        
         SELECT e.patient_id,  
@@ -241,7 +213,30 @@ INNER JOIN
                   group by patient_id order by patient_id
 		) ultima_linha on ultima_linha.patient_id=inicio_real.patient_id 
         
-        
+	
+		
+            	/** **************************************** TPI  **************************************** **/
+            left join
+			(	select patient_id, max(data_inicio_tpi) as data_inicio_tpi
+            from ( select e.patient_id,max(value_datetime) data_inicio_tpi
+				from	encounter e
+						inner join obs o on o.encounter_id=e.encounter_id
+				where 	e.voided=0  and
+						o.voided=0 and o.concept_id=6128 and e.encounter_type in (6,9,53) and e.location_id=:location
+				group by e.patient_id
+				
+				union
+				
+				select e.patient_id,max(e.encounter_datetime) data_inicio_tpi
+				from	 encounter e 
+						inner join obs o on o.encounter_id=e.encounter_id
+				where 	e.voided=0 and
+						o.voided=0 and o.concept_id=6122 and o.value_coded=1256 and e.encounter_type in (6,9) and e.location_id=:location
+				group by e.patient_id
+				 ) tpi_ficha_segui_clinc group by patient_id
+                 
+			) inicio_tpi on inicio_tpi.patient_id=inicio_real.patient_id
+      
                 	/*********************          ultimo regime n *****************************************/
         left join ( select e.patient_id,  e.encounter_datetime as data_regime , case o.value_coded
 	                    when 1703 then 'AZT+3TC+EFV'
@@ -310,7 +305,7 @@ INNER JOIN
                   group by patient_id order by patient_id
 	) ultimo_regime on  ultimo_regime.patient_id = inicio_real.patient_id 
     
-    /***************************          Ultimo pedido de cv na ficha clinica      ******************************************/
+      /***************************          Ultimo pedido de cv na ficha clinica      ******************************************/
        left join (
        
         select patient_id, max(e.encounter_datetime) as data_ult_pedido_cv
@@ -321,6 +316,7 @@ INNER JOIN
                                 group by patient_id  
                          
        ) ult_pedido_cv on ult_pedido_cv.patient_id=inicio_real.patient_id 
+       
 		LEFT JOIN 
 			(	SELECT pad1.*
 				FROM person_address pad1
@@ -370,40 +366,51 @@ INNER JOIN
 
 	left join 
 			(
-				select 	pgg.patient_id,max(pgg.date_enrolled) as date_enrolled 
+				select 	pgg.patient_id,max(pgg.date_enrolled) as date_enrolled
 				from 	patient pt inner join patient_program pgg on pt.patient_id=pgg.patient_id
 				where 	pgg.voided=0 and pt.voided=0 and pgg.program_id=5 and pgg.date_completed is null 
-                and pgg.date_enrolled  between date_sub(:endDate, interval 6 MONTH) and  :endDate  and pgg.location_id=:location
+                and pgg.date_enrolled between date_sub(:endDate, interval 6  MONTH)  and pgg.location_id=:location
 				group by pgg.patient_id
 			) inscrito_tb on inscrito_tb.patient_id=inicio_real.patient_id
 
 			left join 
 			(
-				select 	pgg.patient_id,max(pgg.date_enrolled) as date_enrolled 
+				select 	pgg.patient_id,max(pgg.date_enrolled) as date_enrolled
 				from 	patient pt inner join patient_program pgg on pt.patient_id=pgg.patient_id
 				where 	pgg.voided=0 and pt.voided=0 and pgg.program_id in (3,4,8) and pgg.date_completed is null 
-                and pgg.date_enrolled  between date_sub(:endDate, interval 9 MONTH) and  :endDate  and pgg.location_id=:location
+                and pgg.date_enrolled  between date_sub(:endDate, interval 9  MONTH) and :endDate and pgg.location_id=:location
 				group by pgg.patient_id
 			) inscrito_smi on inscrito_smi.patient_id=inicio_real.patient_id
-          
+
 			left join 
 			(
-				select 	pgg.patient_id,max(pgg.date_enrolled) as date_enrolled 
-				from 	patient pt inner join patient_program pgg on pt.patient_id=pgg.patient_id
-				where 	pgg.voided=0 and pt.voided=0 and pgg.program_id=6 and pgg.date_completed is null 
-                and pgg.date_enrolled  between date_sub(:endDate, interval 6 MONTH) and  :endDate  and pgg.location_id=:location
-				group by pgg.patient_id
+				select 	pgg.patient_id,max(pgg.date_enrolled) as date_enrolled
+						from 	patient pt inner join patient_program pgg on pt.patient_id=pgg.patient_id
+						where 	pgg.voided=0 and pt.voided=0 and pgg.program_id=6 and pgg.date_completed is null 
+						and pgg.date_enrolled between date_sub(:endDate, interval 18 MONTH) and :endDate  and pgg.location_id=:location
+						group by pgg.patient_id
 			) inscrito_ccr on inscrito_ccr.patient_id=inicio_real.patient_id
 /****************************************************************************/
 	WHERE
-    
-   
+          /* 3. Não ter resultados de CV depois do parto */
+          cv_qualitativa.data_cv_qualitativa is null and  (
+          
+          cv.patient_id is null 
+          or 
+          (  ) 
+
+          )
+
+
          /* 3. Não ter resultados de CV nos ultimos 6 meses*/
           ( cv_qualitativa.carga_viral_qualitativa is null and  cv.patient_id is null  and data_ult_pedido_cv is not null and DATEDIFF(:endDate,data_ult_pedido_cv)/30 > 2) 
             or  
             ( cv_qualitativa.carga_viral_qualitativa is null and  cv.patient_id is null  and data_ult_pedido_cv is  null )  or 
             /*   4. Resultado de CV>1000copias/ml  há mais de 3 meses */
-           (cv.value_numeric > 1000 and DATEDIFF(:endDate,cv.data_ult_cv)/30 >3   and cv_qualitativa.data_cv_qualitativa is null    and DATEDIFF(:endDate,data_ult_pedido_cv)/30 > 2  ) 
-  
+           (cv.data_ult_cv is not null and cv.data_ult_cv <  inicio_real.date_enrolled   and DATEDIFF(:endDate,data_ult_pedido_cv)/30 > 2  )  or 
+         (cv.data_ult_cv is not null and cv.data_ult_cv <  inicio_real.date_enrolled   and data_ult_pedido_cv is  null  ) 
+
+
+     
 ) activos  
 GROUP BY patient_id
