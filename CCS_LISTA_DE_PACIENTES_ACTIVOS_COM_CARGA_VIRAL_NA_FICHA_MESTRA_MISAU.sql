@@ -10,9 +10,8 @@ Created Date: NA
 Change by: Agnaldo  Samuel
 Change Date: 06/06/2021 
 Change Reason: Bug fix
--- Peso e altura incorrecta ( Anibal J.) 
--- Excluir ficha resumo e APPSS na determinacao da ultima visita
--- Revelacao de diagnostico da ficha clinica ( Mauricio T.)
+ - Considera a carga viral qualitativa ( novos instrumentos)
+
 */
 
 select 	concat(pid.identifier,' ') as NID,
@@ -30,7 +29,7 @@ select 	concat(pid.identifier,' ') as NID,
 		round(datediff(:endDate,pe.birthdate)/365) idade_actual
 from						
 		
-		(	Select ultimavisita.patient_id,ultimavisita.encounter_datetime,o.value_datetime,e.location_id
+		(	Select ultimavisita.patient_id,ultimavisita.encounter_datetime,max(o.value_datetime) value_datetime,e.location_id
 			from
 				(	select 	p.patient_id,max(encounter_datetime) as encounter_datetime
 					from 	encounter e 
@@ -43,6 +42,7 @@ from
 			left join obs o on o.encounter_id=e.encounter_id and (o.concept_id=5096 OR o.concept_id=1410) and 
 			e.encounter_datetime=ultimavisita.encounter_datetime			
 			where  o.voided=0 and e.encounter_type in (18,9,6) and e.location_id=:location and datediff(:endDate,o.value_datetime) < 60 
+		  group by e.patient_id
 		) visita 
 		
 		inner join
@@ -63,7 +63,7 @@ from
 		) carga1 on carga1.patient_id = visita.patient_id
 
 		left join
-		(	select patient_id,max(data_ultima_carga) data_ultima_carga,max(value_numeric) valor_ultima_carga
+		(	select e.patient_id,max(encounter_datetime) data_ultima_carga, o.value_numeric valor_ultima_carga
 			from	
 				(	select 	e.patient_id,
 							max(o.obs_datetime) data_ultima_carga
@@ -74,9 +74,11 @@ from
 					and e.location_id=:location
 					group by e.patient_id
 				) ultima_carga
-				inner join obs o on o.person_id=ultima_carga.patient_id and o.obs_datetime=ultima_carga.data_ultima_carga
-			where o.concept_id=856 and o.voided=0
-			group by patient_id
+				inner join encounter e on e.patient_id = ultima_carga.patient_id
+				inner join obs o on o.encounter_id=e.encounter_id 
+				where  e.encounter_datetime=ultima_carga.data_ultima_carga and  o.concept_id=856 and o.voided=0 and e.voided=0
+				and e.form_id = 163
+			group by e.patient_id
 		) carga2 on carga2.patient_id= visita.patient_id
 		
 		left join 		

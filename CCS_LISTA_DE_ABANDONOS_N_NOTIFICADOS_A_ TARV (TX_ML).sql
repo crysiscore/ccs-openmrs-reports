@@ -9,11 +9,11 @@ Created By: Agnaldo Samuel
 Created Date: 18-11-2020
 
 Change by: Agnaldo  Samuel
-Change Date: 06/06/2021 
-Change Reason: Bug fix
-
-
-
+Change Date: 14/06/2021 
+Change Reason: Improvement
+              - modificacao da sub-consulta para buscar dos 4 ultimos seguimentos
+			  - 
+               
 
 */
 SELECT *
@@ -63,7 +63,7 @@ FROM
 								INNER JOIN obs o ON o.encounter_id=e.encounter_id
 						WHERE 	e.voided=0 AND o.voided=0 AND p.voided=0 AND 
 								e.encounter_type IN (18,6,9) AND o.concept_id=1255 AND o.value_coded=1256 AND 
-								e.encounter_datetime<=:endDate AND e.location_id=:location
+								e.encounter_datetime<=:endDate AND e.location_id=:location 
 						GROUP BY p.patient_id
 				
 						UNION
@@ -75,7 +75,7 @@ FROM
 								INNER JOIN obs o ON e.encounter_id=o.encounter_id
 						WHERE 	p.voided=0 AND e.voided=0 AND o.voided=0 AND e.encounter_type IN (18,6,9,53) AND 
 								o.concept_id=1190 AND o.value_datetime IS NOT NULL AND 
-								o.value_datetime<=:endDate AND e.location_id=:location
+								o.value_datetime<=:endDate AND e.location_id=:location 
 						GROUP BY p.patient_id
 
 						UNION
@@ -83,7 +83,7 @@ FROM
 						/*Patients enrolled in ART Program: OpenMRS Program*/
 						SELECT 	pg.patient_id,MIN(date_enrolled) data_inicio
 						FROM 	patient p INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
-						WHERE 	pg.voided=0 AND p.voided=0 AND program_id=2 AND date_enrolled<=:endDate AND location_id=:location
+						WHERE 	pg.voided=0 AND p.voided=0 AND program_id=2 AND date_enrolled<=:endDate AND location_id=:location 
 						GROUP BY pg.patient_id
 						
 						UNION
@@ -93,7 +93,7 @@ FROM
 						  SELECT 	e.patient_id, MIN(e.encounter_datetime) AS data_inicio 
 						  FROM 		patient p
 									INNER JOIN encounter e ON p.patient_id=e.patient_id
-						  WHERE		p.voided=0 AND e.encounter_type=18 AND e.voided=0 AND e.encounter_datetime<=:endDate AND e.location_id=:location
+						  WHERE		p.voided=0 AND e.encounter_type=18 AND e.voided=0 AND e.encounter_datetime<=:endDate AND e.location_id=:location 
 						  GROUP BY 	p.patient_id
 					  
 					  /*	union
@@ -105,7 +105,7 @@ FROM
 								inner join obs o on e.encounter_id=o.encounter_id
 						where 	p.voided=0 and e.voided=0 and o.voided=0 and e.encounter_type=52 and 
 								o.concept_id=23866 and o.value_datetime is not null and 
-								o.value_datetime<=:endDate and e.location_id=:location
+								o.value_datetime<=:endDate and e.location_id=:location 
 						group by p.patient_id   */
 					
 				
@@ -117,26 +117,31 @@ WHERE data_inicio <=:endDate
 )inicio_real
 			INNER JOIN person p ON p.person_id=inicio_real.patient_id
 			INNER JOIN
-			(
-				SELECT 	p.patient_id 
-				FROM 	patient p INNER JOIN encounter e ON e.patient_id=p.patient_id 
-				WHERE 	e.voided=0 AND p.voided=0 AND e.encounter_type IN (5,7) AND e.encounter_datetime<=:endDate AND e.location_id = :location
+			(SELECT patient_id
+				FROM (
+					SELECT 	p.patient_id 
+					FROM 	patient p INNER JOIN encounter e ON e.patient_id=p.patient_id 
+					WHERE 	e.voided=0 AND p.voided=0 AND e.encounter_type IN (5,7) AND e.encounter_datetime<=:endDate AND e.location_id = :location 
 
-				UNION
+					UNION
 
-				SELECT 	pg.patient_id
-				FROM 	patient p INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
-				WHERE 	pg.voided=0 AND p.voided=0 AND program_id IN (1,2) AND date_enrolled<=:endDate AND location_id=:location
-				
-				UNION
-				
-				SELECT 	p.patient_id
-				FROM 	patient p
-						INNER JOIN encounter e ON p.patient_id=e.patient_id
-						INNER JOIN obs o ON e.encounter_id=o.encounter_id
-				WHERE 	p.voided=0 AND e.voided=0 AND o.voided=0 AND e.encounter_type=53 AND 
-						o.concept_id=23891 AND o.value_datetime IS NOT NULL AND 
-						o.value_datetime<=:endDate AND e.location_id=:location
+					SELECT 	pg.patient_id
+					FROM 	patient p INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
+					WHERE 	pg.voided=0 AND p.voided=0 AND program_id IN (1,2) AND date_enrolled<=:endDate AND location_id=:location 
+					
+					UNION
+					
+					SELECT 	p.patient_id
+					FROM 	patient p
+							INNER JOIN encounter e ON p.patient_id=e.patient_id
+							INNER JOIN obs o ON e.encounter_id=o.encounter_id
+					WHERE 	p.voided=0 AND e.voided=0 AND o.voided=0 AND e.encounter_type=53 AND 
+							o.concept_id=23891 AND o.value_datetime IS NOT NULL AND 
+							o.value_datetime<=:endDate AND e.location_id=:location 
+
+
+					) inscricao_programa group by patient_id
+					
 				
 				
 			)inscricao ON inicio_real.patient_id=inscricao.patient_id			
@@ -203,7 +208,7 @@ WHERE data_inicio <=:endDate
              /***************************   Ultimo seguimento no periodo de analise ******************************* */
              LEFT JOIN 
              (        
-				SELECT patient_id,MAX(encounter_datetime) encounter_datetime, MAX(value_datetime) AS value_datetime --  , source
+				SELECT patient_id,MAX(encounter_datetime) encounter_datetime, MAX(value_datetime) AS value_datetime --
 				FROM
 				(
 					SELECT ultimofila.patient_id,ultimofila.encounter_datetime,o.value_datetime  -- , 'Fila' as 'source' 
@@ -220,11 +225,11 @@ WHERE data_inicio <=:endDate
 					INNER JOIN obs o ON o.encounter_id=e.encounter_id			
 					WHERE o.concept_id=5096 AND o.voided=0 AND e.encounter_datetime=ultimofila.encounter_datetime AND 
 					e.encounter_type=18 AND e.location_id=:location 
-					
+					GROUP By e.patient_id
                     
 					UNION
 					
-					SELECT 	e.patient_id,MAX(value_datetime) encounter_datetime,DATE_ADD(MAX(value_datetime), INTERVAL 30 DAY) AS value_datetime -- ,  'Recepcao- Levantou ARV' as 'source' 
+					SELECT 	e.patient_id,MAX(encounter_datetime) encounter_datetime,DATE_ADD(MAX(value_datetime), INTERVAL 30 DAY) AS value_datetime -- ,  'Recepcao- Levantou ARV' as 'source' 
 					FROM 	encounter e
 							INNER JOIN obs o ON e.encounter_id=o.encounter_id
 					WHERE  e.voided=0 AND o.voided=0 AND e.encounter_type=52 AND 
@@ -247,7 +252,7 @@ WHERE data_inicio <=:endDate
 					INNER JOIN obs o ON o.encounter_id=e.encounter_id			
 					WHERE o.concept_id=1410 AND o.voided=0 AND e.encounter_datetime=ultimaconsulta.encounter_datetime AND 
 					e.encounter_type IN (6,9) AND e.location_id=:location 
-				
+				    GROUP By e.patient_id
                     
 				) lev_consulta
 				GROUP BY patient_id		
@@ -266,14 +271,14 @@ WHERE data_inicio <=:endDate
 					(	SELECT 	p.patient_id,MAX(encounter_datetime) AS encounter_datetime
 						FROM 	encounter e 
 								INNER JOIN patient p ON p.patient_id=e.patient_id 		
-						WHERE 	e.voided=0 AND p.voided=0 AND e.encounter_type=18 AND e.location_id=:location
+						WHERE 	e.voided=0 AND p.voided=0 AND e.encounter_type=18 AND e.location_id=:location 
 						GROUP BY p.patient_id
 					) ultimofila
 								
                     
 					UNION
 					
-					SELECT 	e.patient_id,MAX(value_datetime) encounter_datetime
+					SELECT 	e.patient_id,MAX(encounter_datetime) encounter_datetime
 					FROM 	encounter e 
                     INNER JOIN obs o ON e.encounter_id=o.encounter_id
 					WHERE e.voided=0 AND o.voided=0 AND e.encounter_type=52 AND 
@@ -394,17 +399,19 @@ WHERE data_inicio <=:endDate
 					INNER JOIN obs o ON o.encounter_id=e.encounter_id			
 					WHERE o.concept_id  IN (6272,6273)  AND o.value_coded = 1706 AND o.voided=0 AND e.encounter_datetime=master_card.encounter_datetime AND 
 					e.encounter_type IN (6,9,53) AND e.location_id=:location 
-				
+				    GROUP BY e.patient_id
+
 			) transfered_out_ficha_clinica ON transfered_out_ficha_clinica.patient_id=inicio_real.patient_id
 			LEFT JOIN
 			(
 				SELECT 	pg.patient_id
 				FROM 	patient p INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
-				WHERE 	pg.voided=0 AND p.voided=0 AND program_id=2 AND date_enrolled<=:endDate AND location_id=:location
+				WHERE 	pg.voided=0 AND p.voided=0 AND program_id=2 AND date_enrolled<=:endDate AND location_id=:location 
 			) programa ON programa.patient_id=inicio_real.patient_id
 	
 	)inicios
 WHERE patient_id NOT IN  
+	
 		(	
 		-- The system will exclude the following patients: (OpenMRS TX_ML Indicator Specification and Requirements_v2.7.4 )
 		-- ALL Patients who were transferred-OUT (defined BY criteria ON TX_ML_FR6) BY END of previous reporting period AND
@@ -416,7 +423,7 @@ WHERE patient_id NOT IN
 					INNER JOIN patient_state ps ON pg.patient_program_id=ps.patient_program_id
 			WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND 
 					pg.program_id=2 AND ps.state IN (7,8,9,10) AND 
-					ps.end_date IS NULL AND location_id= :location AND ps.start_date<= DATE_SUB(:startDate, INTERVAL 1 DAY) 	
+					ps.end_date IS NULL AND location_id= :location AND ps.start_date<= DATE_SUB(:startDate , INTERVAL 1 DAY) 	
 
 				
 		)  AND   ( data_transfered_out IS NULL OR data_transfered_out BETWEEN prox_marcad AND :endDate ) 
@@ -426,6 +433,6 @@ WHERE patient_id NOT IN
 		-- and the (2) last scheduled consultation date (Ficha Seguimento or Ficha Clinica) 
 		-- and (3) 30 days after the last ART pickup date (Recepção – Levantou ARV), 
 		-- adding 28 days and this date is less than the reporting end Date and greater or equal than start date minus 1 day.
-           DATE(limite_txml)   between DATE_SUB(:startDate, INTERVAL 1 DAY) AND   :endDate 
+        DATE(limite_txml)   between DATE_SUB(:startDate , INTERVAL 1 DAY) AND   :endDate 
 			
 GROUP BY patient_id
