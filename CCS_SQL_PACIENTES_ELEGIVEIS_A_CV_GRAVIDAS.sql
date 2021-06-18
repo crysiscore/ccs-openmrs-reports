@@ -27,6 +27,8 @@ FROM
           DATE_FORMAT(ultima_linha.data_linhat,'%d/%m/%Y') as data_ult_linha,
             cv.value_numeric valor_ult_cv,
             cv.data_ult_cv,
+			cv_qualitativa.carga_viral_qualitativa,
+            cv_qualitativa.data_cv_qualitativa,
             ultimo_regime.regime,
             ultimo_regime.data_regime,
             CONCAT( if(inscrito_tb.date_enrolled is null,'','TB '),'',if(inscrito_smi.date_enrolled is null,'','_SMI'),' ',if(inscrito_ccr.date_enrolled is null,'','_CCR')) AS proveniencia,
@@ -95,7 +97,7 @@ INNER JOIN
 					inner join encounter e on p.patient_id=e.patient_id
 					inner join obs o on e.encounter_id=o.encounter_id
 			where 	p.voided=0 and e.voided=0 and o.voided=0 and concept_id = 1982 and value_coded = 1065 
-					and e.encounter_type =6 and o.obs_datetime between date_sub(:endDate, interval 6 MONTH) and  :endDate  and 
+					and e.encounter_type =6 and o.obs_datetime between date_sub(:endDate, interval 9 MONTH) and  :endDate  and 
 					e.location_id=:location
 			group by p.patient_id
 			

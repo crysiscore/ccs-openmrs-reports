@@ -407,13 +407,13 @@ FROM
 			) inscrito_ccr on inscrito_ccr.patient_id=inicio_real.patient_id
 /****************************************************************************/
 	WHERE
-        
          /* 3. Não ter resultados de CV nos ultimos 12 meses*/
-          ( cv_qualitativa.carga_viral_qualitativa is null and  cv.patient_id is null ) 
-            or  
-          
+          ( cv_qualitativa.carga_viral_qualitativa is null and  cv.patient_id is null  and data_ult_pedido_cv is not null and DATEDIFF(:endDate,data_ult_pedido_cv)/30 > 2) or
+	
+              ( cv_qualitativa.carga_viral_qualitativa is null and  cv.patient_id is null  and data_ult_pedido_cv is  null )  or 
             /*   4. Resultado de CV>1000copias/ml  há mais de 3 meses */
-           (cv.value_numeric > 1000 and DATEDIFF(:endDate,cv.data_ult_cv)/30 >3   and cv_qualitativa.data_cv_qualitativa is null      ) 
+           (cv.value_numeric > 1000 and DATEDIFF(:endDate,cv.data_ult_cv)/30 >3   and cv_qualitativa.data_cv_qualitativa is not null  and  cv.data_ult_cv  >  cv_qualitativa.data_cv_qualitativa and DATEDIFF(:endDate,data_ult_pedido_cv)/30 > 2  )  or 
+            (cv.value_numeric > 1000 and DATEDIFF(:endDate,cv.data_ult_cv)/30 >3   and cv_qualitativa.data_cv_qualitativa is  null     )   
                 
 ) activos --  where tempo_linha > 6
 GROUP BY patient_id

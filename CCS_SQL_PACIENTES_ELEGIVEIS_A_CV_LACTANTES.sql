@@ -26,6 +26,7 @@ FROM
              DATE_FORMAT(ult_pedido_cv.data_ult_pedido_cv,'%d/%m/%Y') as data_ult_pedido_cv,
                          DATE_FORMAT(inicio_real.date_enrolled,'%d/%m/%Y') as date_enrolled,
              DATEDIFF(cv.data_ult_cv , inicio_real.date_enrolled )/30 as tempo_pass,
+			 DATE_FORMAT(inicio_real.date_enrolled,,'%d/%m/%Y') as data_marcada_lactante,
           cv_qualitativa.carga_viral_qualitativa,
             cv_qualitativa.data_cv_qualitativa,
             ultimo_regime.regime,

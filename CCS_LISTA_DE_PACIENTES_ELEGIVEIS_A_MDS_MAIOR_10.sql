@@ -512,15 +512,16 @@ left join
 			) inscrito_ccr on inscrito_ccr.patient_id=inicio_real.patient_id
           /****************************************************************************/
 	WHERE
+	 -- criterio de exclusao : ultimos 3 levantamentos ou consultas regulares
          levantamentos.dias_atraso_2_1 < 5 and
 	     levantamentos.dias_atraso_3_2 < 5 and
          levantamentos.dias_atraso_4_3 < 5 and
         -- 2.   CV ˂ 1000 cópias/ml nos ultimos 12M
             cv.valor_cv < 1000 and
-        /*** Condição activa do estadio I ou II****/
+         -- criterio de inclusao : /*** Condição activa do estadio I ou II****/
          estadio_oms.estadio in (1204,1205) and
           
-          -- nao estar em algum modelo a mais de um ano
+          -- criterio de exclusao : nao estar em algum modelo a mais de um ano
           inicio_real.patient_id not in (
           
         	SELECT e.patient_id
@@ -540,7 +541,7 @@ left join
             group by patient_id
           
           )  and
-     -- Estado de gravidez ou lactação 
+     -- criterio de exclusao : Estado de gravidez ou lactação 
 	 gravida_real.data_gravida is null and
 	 lactante_real.date_enrolled is null
 

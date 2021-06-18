@@ -135,6 +135,8 @@ FROM
 				INNER JOIN encounter e ON e.patient_id=ultimavisita.patient_id
 				LEFT JOIN obs o ON o.encounter_id=e.encounter_id AND (o.concept_id=5096 OR o.concept_id=1410)AND e.encounter_datetime=ultimavisita.encounter_datetime			
 			WHERE  o.voided=0  AND e.voided =0 AND e.encounter_type IN (6,9,18) AND e.location_id=:location
+			group by e.patient_id
+
 		) ultimavisita ON ultimavisita.patient_id=inicio_real.patient_id
 	               
 		LEFT JOIN 
@@ -238,9 +240,8 @@ FROM
                 inner join obs o on o.encounter_id=e.encounter_id 
 				where  ultimofila.encounter_datetime = e.encounter_datetime and
                         encounter_type =18 and e.voided=0 and o.voided=0 and 
-						o.concept_id=1088 and e.location_id=:location group by patient_id
-
-
+						o.concept_id=1088 and e.location_id=:location 
+						group by patient_id
               
 
 			) regime on regime.patient_id=inicio_real.patient_id
@@ -253,19 +254,28 @@ FROM
 		) programa ON programa.patient_id=inicio_real.patient_id
 
      
-			/** **************************************** Tipo dispensa  concept_id = 23739 **************************************** **/
+
+	/** **************************************** Tipo dispensa  concept_id = 23739 **************************************** **/
     LEFT JOIN 
-		(SELECT 	e.patient_id,
+		( SELECT 	e.patient_id,
 				CASE o.value_coded
 					WHEN 23888  THEN 'DISPENSA SEMESTRAL'
 					WHEN 1098 THEN 'DISPENSA MENSAL'
 					WHEN 23720 THEN 'DISPENSA TRIMESTRAL'
 				ELSE '' END AS tipodispensa,
-                max(encounter_datetime) as data_tipo_dispensa
-			FROM 	obs o
-			INNER JOIN encounter e ON o.encounter_id=e.encounter_id
-			WHERE 	e.encounter_type IN (6,9,53) AND e.voided=0 AND o.voided=0 AND o.concept_id = 23739 AND o.location_id=:location
-            group by patient_id
+                e.encounter_datetime
+                from encounter e inner join
+                ( select e.patient_id, max(encounter_datetime) as data_ult_tipo_dis
+					FROM 	obs o
+					INNER JOIN encounter e ON o.encounter_id=e.encounter_id
+					WHERE 	e.encounter_type IN (6,9,53) AND e.voided=0 AND o.voided=0 AND o.concept_id = 23739 AND o.location_id= :location
+					group by patient_id ) ult_dispensa
+					on e.patient_id =ult_dispensa.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	e.encounter_type IN (6,9,53)
+             and ult_dispensa.data_ult_tipo_dis = e.encounter_datetime 
+             AND o.voided=0 AND o.concept_id = 23739
+             group by patient_id
 		) tipo_dispensa ON tipo_dispensa.patient_id=inicio_real.patient_id
         
         /** ************************** LinhaTerapeutica concept_id = 21151  * ********************************************** **/
@@ -322,7 +332,7 @@ SELECT 	e.patient_id,
           /* ******************************** ultima carga viral *********** ******************************/
         LEFT JOIN(  
           
-          SELECT ult_cv.patient_id, e.encounter_datetime , o.value_numeric as carga_viral , ult_cv.data_ult_carga
+          SELECT ult_cv.patient_id, max(e.encounter_datetime) , o.value_numeric as carga_viral , ult_cv.data_ult_carga
 			FROM
                     (  
 						   SELECT 	e.patient_id,

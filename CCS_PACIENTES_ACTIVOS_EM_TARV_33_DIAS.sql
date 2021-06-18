@@ -180,6 +180,7 @@ FROM
 				INNER JOIN encounter e ON e.patient_id=ultimavisita.patient_id
 				LEFT JOIN obs o ON o.encounter_id=e.encounter_id AND (o.concept_id=5096 OR o.concept_id=1410)AND e.encounter_datetime=ultimavisita.encounter_datetime			
 			WHERE  o.voided=0  AND e.voided =0 AND e.encounter_type IN (6,9,18) AND e.location_id= :location
+			group by e.patient_id
 		) visita ON visita.patient_id=inicio_real.patient_id
 		left join 
 			(
@@ -344,6 +345,7 @@ FROM
 			inner join obs o on o.encounter_id=e.encounter_id			
 			where o.concept_id=23703 and o.voided=0 and e.encounter_datetime=ultimavisita_keypop.encounter_datetime and 
 			e.encounter_type in (6,9,34,35)  and e.location_id=:location 
+			group by e.patient_id
 		) keypop on keypop.patient_id=inicio_real.patient_id
 	
 		LEFT JOIN

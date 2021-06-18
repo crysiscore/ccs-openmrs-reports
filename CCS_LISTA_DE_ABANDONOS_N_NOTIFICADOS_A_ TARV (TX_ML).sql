@@ -10,8 +10,8 @@ Created Date: 18-11-2020
 
 Change by: Agnaldo  Samuel
 Change Date: 14/06/2021 
-Change Reason: Improvement
-              - modificacao da sub-consulta para buscar dos 4 ultimos seguimentos
+Change Reason: Bug fix 
+              - A Sub-consulta do ultimo_seguimento buscava  uma data incorrecta  
 			  - 
                
 

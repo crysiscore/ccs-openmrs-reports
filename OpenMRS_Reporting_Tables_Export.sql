@@ -18,4 +18,4 @@ mysqldump -uroot  xipamanine reporting_report_design reporting_report_design_res
 mysqldump -uroot -p xipamanine reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_31_08_2020.sql
 
 -- Xipamanine DB 18/08/2020
-mysqldump -uroot -p xipamanine reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_08_06_2021.sql
+mysqldump  -uesaude -p -h127.0.0.1 -P3306 xipamanine reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_08_06_2021.sql 

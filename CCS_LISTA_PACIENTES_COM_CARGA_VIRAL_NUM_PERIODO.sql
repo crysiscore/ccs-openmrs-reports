@@ -1,5 +1,5 @@
 /*
-Name: CCS LISTA DE PACIENTES COM EXAME DE CARGA VIRAL
+Name: CCS LISTA DE PACIENTES COM EXAME DE CARGA VIRAL NUM PERIODO
 Description:
               -  CCS LISTA DE PACIENTES COM EXAME DE CARGA VIRAL NUM PERIODO
 
@@ -26,11 +26,12 @@ select 	pid.identifier as NID,
 		if(carga2.data_primeira_carga<>carga1.data_ultima_carga,carga1.carga_viral_qualitativa,'') as carga_viral_qualitativa,
         if(carga2.data_primeira_carga<>carga1.data_ultima_carga,carga1.valor_ultima_carga,'') as valor_ultima_carga,
         if(carga2.data_primeira_carga<>carga1.data_ultima_carga,carga1.Origem_Resultado,'') as origem_ultimo,
-
+        inicio_real.data_inicio,
 		pe.gender,
 		round(datediff(:endDate,pe.birthdate)/365) idade_actual,
 	   DATE_FORMAT(inicio_segunda.data_regime,'%d/%m/%Y') data_regime,
 	   inicio_segunda.regime_segunda_linha,
+	   DATE_FORMAT(seguimento.data_seguimento,'%d/%m/%Y') data_seguimento,
         telef.value AS telefone
 		
 from		

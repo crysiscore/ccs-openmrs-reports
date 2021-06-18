@@ -1,16 +1,30 @@
+/*
+Name: CCS LISTA DE PACIENTES QUE INICIARAM PROFILAXIA COM ISONIAZIDA (TPI)
+Description:
+              - CCS LISTA DE PACIENTES QUE INICIARAM PROFILAXIA COM ISONIAZIDA (TPI)
+
+Created By: Agnaldo S.
+Created Date: NA
+
+Change by: Agnaldo  Samuel
+Change Date: 06/06/2021 
+Change Reason: Bug fix
+-- CD4 & Tipo de dispensa
+*/
+
 	select *
 from 
 
-(Select 	inicio_tpi.patient_id,
+(Select inicio_tpi.patient_id,
 		inicio_tpi.data_inicio_tpi,
 		terminou_tpi.data_final_tpi,
 		concat(ifnull(pn.given_name,''),' ',ifnull(pn.middle_name,''),' ',ifnull(pn.family_name,'')) nome,
 		pid.identifier as nid,
-       round(datediff(:endDate,p.birthdate)/365) idade_actual,
+        round(datediff(:endDate,p.birthdate)/365) idade_actual,
 		 DATE_FORMAT(seguimento.ultimo_seguimento, '%d/%m/%Y') as ultimo_seguimento,
         DATE_FORMAT(ult_seguimento.value_datetime,'%d/%m/%Y') as data_proxima_visita,
-	DATE_FORMAT(levantamento.ultimo_levantamneto, '%d/%m/%Y') as data_ultimo_levantamento,
-	DATE_FORMAT(proximo_levantamento.value_datetime,'%d/%m/%Y') as data_proximo_levantamento,
+        DATE_FORMAT(levantamento.ultimo_levantamneto, '%d/%m/%Y') as data_ultimo_levantamento,
+        DATE_FORMAT(proximo_levantamento.value_datetime,'%d/%m/%Y') as data_proximo_levantamento,
 		if(obs.value_coded is not null,if(obs.value_coded in (1065,1257),'Sim','Não'),'SI') recebeu_profilaxia,
 		 DATE_FORMAT(date_add(date_add(inicio_tpi.data_inicio_tpi, interval 6 month), interval -1 day) ,'%d/%m/%Y') as data_completa_6meses,
 		DATE_FORMAT(inicio_tarv.data_inicio ,'%d/%m/%Y')  as data_inicio_tarv,
@@ -105,13 +119,13 @@ left join
 				
 				union
 				
-				
-				/*Patients with first drugs pick up date set in Pharmacy: First ART Start Date*/
+				-- Cause Null for mistyped arv pickup dates
+				/*Patients with first drugs pick up date set in Pharmacy: First ART Start Date
 				  SELECT 	e.patient_id, MIN(e.encounter_datetime) AS data_inicio 
 				  FROM 		patient p
 							inner join encounter e on p.patient_id=e.patient_id
 				  WHERE		p.voided=0 and e.encounter_type=18 AND e.voided=0 and e.encounter_datetime<=:endDate and e.location_id=:location
-				  GROUP BY 	p.patient_id
+				  GROUP BY 	p.patient_id */
 			  
 			) inicio_real
 		group by patient_id
@@ -121,7 +135,7 @@ inner join
 (	select  p.patient_id,max(encounter_datetime) ultimo_seguimento
 	from	patient p
 			inner join encounter e on p.patient_id=e.patient_id
-	where 	e.voided=0 and p.voided=0 and e.encounter_datetime between :startDate and curdate() and
+	where 	e.voided=0 and p.voided=0 and e.encounter_datetime -- between :startDate and :endDate 
 			e.encounter_type in (6,9) and e.location_id=:location
 	group by p.patient_id
 ) seguimento on inicio_tpi.patient_id=seguimento.patient_id 
