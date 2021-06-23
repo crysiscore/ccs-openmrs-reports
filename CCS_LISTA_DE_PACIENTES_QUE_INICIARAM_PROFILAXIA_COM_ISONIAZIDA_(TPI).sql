@@ -117,10 +117,10 @@ left join
 				where 	pg.voided=0 and p.voided=0 and program_id=2 and date_enrolled<=:endDate and location_id=:location
 				group by pg.patient_id
 				
-				union
+				/*union
 				
-				-- Cause Null for mistyped arv pickup dates
-				/*Patients with first drugs pick up date set in Pharmacy: First ART Start Date
+				  Cause Null for mistyped arv pickup dates
+				  Patients with first drugs pick up date set in Pharmacy: First ART Start Date
 				  SELECT 	e.patient_id, MIN(e.encounter_datetime) AS data_inicio 
 				  FROM 		patient p
 							inner join encounter e on p.patient_id=e.patient_id
@@ -131,11 +131,11 @@ left join
 		group by patient_id
 )inicio_tarv on inicio_tpi.patient_id=inicio_tarv.patient_id
 
-inner join 
+left join 
 (	select  p.patient_id,max(encounter_datetime) ultimo_seguimento
 	from	patient p
 			inner join encounter e on p.patient_id=e.patient_id
-	where 	e.voided=0 and p.voided=0 and e.encounter_datetime -- between :startDate and :endDate 
+	where 	e.voided=0 and p.voided=0 and e.encounter_datetime  and
 			e.encounter_type in (6,9) and e.location_id=:location
 	group by p.patient_id
 ) seguimento on inicio_tpi.patient_id=seguimento.patient_id 

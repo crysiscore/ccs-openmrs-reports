@@ -13,6 +13,7 @@ Change Reason: Bug fix
 */
 
 
+
 SELECT * 
 FROM 
 ( SELECT 	inicio_real.patient_id,
@@ -226,9 +227,7 @@ FROM
 		) ultima_linha on ultima_linha.patient_id=inicio_real.patient_id 
         
 	
-	
-		
-            	/** **************************************** TPI  **************************************** **/
+		/** **************************************** TPI  **************************************** **/
             left join
 			(	select patient_id, max(data_inicio_tpi) as data_inicio_tpi
             from ( select e.patient_id,max(value_datetime) data_inicio_tpi
@@ -407,6 +406,7 @@ FROM
 			) inscrito_ccr on inscrito_ccr.patient_id=inicio_real.patient_id
 /****************************************************************************/
 	WHERE
+          -- Criterios de Elegibilidade a CV por Tipo de Paciente
          /* 3. Não ter resultados de CV nos ultimos 12 meses*/
           ( cv_qualitativa.carga_viral_qualitativa is null and  cv.patient_id is null  and data_ult_pedido_cv is not null and DATEDIFF(:endDate,data_ult_pedido_cv)/30 > 2) or
 	
@@ -414,6 +414,6 @@ FROM
             /*   4. Resultado de CV>1000copias/ml  há mais de 3 meses */
            (cv.value_numeric > 1000 and DATEDIFF(:endDate,cv.data_ult_cv)/30 >3   and cv_qualitativa.data_cv_qualitativa is not null  and  cv.data_ult_cv  >  cv_qualitativa.data_cv_qualitativa and DATEDIFF(:endDate,data_ult_pedido_cv)/30 > 2  )  or 
             (cv.value_numeric > 1000 and DATEDIFF(:endDate,cv.data_ult_cv)/30 >3   and cv_qualitativa.data_cv_qualitativa is  null     )   
-                
-) activos --  where tempo_linha > 6
+         -- 2. Na mesma linha  de TARV por pelo menos 6 meses
+) activos   where tempo_linha > 6 -- or tempo_linha is null
 GROUP BY patient_id

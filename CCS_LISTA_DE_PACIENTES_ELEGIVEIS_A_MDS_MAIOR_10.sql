@@ -22,9 +22,60 @@ Change Reason: Code improvement
 			   - optimizar algoritmo de busca dos 4 ultimos levantamentos
 
 */
+
+/*
+Name: CCS SQL PACIENTES ELEGIVEIS MDS MAIOR 10 ANOS
+Description:
+              A) Perfil de Pacientes para inclusão dos MDS: 
+                - ≥16 mêses em TARV 
+                -  CV ˂ 1000 cópias/ml nos ultimos 12M 
+                - Aderente (últimos 3 levantamentos ou consultas regulares) 
+                - Estar ha mais de 6 meses dentro de um novo regime C
+              b) Critérios de exclusão 
+                - Condição activa do estadio III ou IV (ex. TB, Sarcoma de Kaposi, DAM, DAG, Diarreia cronica, Candidiase oral/esofagica) 
+                - Presença de reação adversa a medicamentos
+                - Mudança de linha ou regime de tratamento por menos 6 de  meses
+    
+
+Created By: Agnaldo Samuel
+Created Date: 18-09-2020
+
+Change by: Agnaldo  Samuel
+Change Date: 16/06/2021 
+Change Reason: Code improvement
+               - Considerar a carga viral qualitativa na query
+			   - optimizar algoritmo de busca dos 4 ultimos levantamentos
+
+*/
+/*
+Name: CCS SQL PACIENTES ELEGIVEIS MDS MAIOR 10 ANOS
+Description:
+              A) Perfil de Pacientes para inclusão dos MDS: 
+                - ≥16 mêses em TARV 
+                -  CV ˂ 1000 cópias/ml nos ultimos 12M 
+                - Aderente (últimos 3 levantamentos ou consultas regulares) 
+                - Estar ha mais de 6 meses dentro de um novo regime C
+              b) Critérios de exclusão 
+                - Condição activa do estadio III ou IV (ex. TB, Sarcoma de Kaposi, DAM, DAG, Diarreia cronica, Candidiase oral/esofagica) 
+                - Presença de reação adversa a medicamentos
+                - Mudança de linha ou regime de tratamento por menos 6 de  meses
+    
+
+Created By: Agnaldo Samuel
+Created Date: 18-09-2020
+
+Change by: Agnaldo  Samuel
+Change Date: 16/06/2021 
+Change Reason: Code improvement
+               - Considerar a carga viral qualitativa na query
+			   - optimizar algoritmo de busca dos 4 ultimos levantamentos
+
+*/
+
+
+
  SELECT * 
-FROM 
-( SELECT 	inicio_real.patient_id,
+FROM ( SELECT 	inicio_real.patient_id,
 			CONCAT(pid.identifier,' ') AS NID,
             CONCAT(IFNULL(pn.given_name,''),' ',IFNULL(pn.middle_name,''),' ',IFNULL(pn.family_name,'')) AS 'NomeCompleto',
 			p.gender,
@@ -38,8 +89,10 @@ FROM
             cv.data_maior_carga,
             cv_qualitativa.carga_viral_qualitativa,
             levantamentos.dias_atraso_2_1 ,
-            levantamentos.dias_atraso_3_2,
-            levantamentos.dias_atraso_4_3,
+            levantamentos.dias_atraso_3_2 ,
+            levantamentos.dias_atraso_4_3 , 
+            inicio_real.data_gravida,
+	        inicio_real.date_enrolled ,
 			CONCAT( if(inscrito_tb.date_enrolled is null,'','TB '),'',if(inscrito_smi.date_enrolled is null,'','_SMI'),
             ' ',if(inscrito_ccr.date_enrolled is null,'','_CCR')) AS proveniencia,
             estadio_oms.estadio_om,
@@ -59,7 +112,7 @@ FROM
 	FROM	
 	(	
     
-       SELECT criterio_1.patient_id, criterio_1.data_inicio, ultimavisita.value_datetime as prox_visita
+       SELECT criterio_1.patient_id, criterio_1.data_inicio, ultimavisita.value_datetime as prox_visita ,lactante_real.date_enrolled,gravida_real.data_gravida
 	FROM ( 
        
        select * from (
@@ -122,10 +175,85 @@ FROM
             group by patient_id
 		) ultimavisita ON ultimavisita.patient_id=criterio_1.patient_id and DATEDIFF(:endDate,ultimavisita.value_datetime) <= 28
         
+        -- criterio de exclusao : Estado de gravidez ou lactação 
+	    --  gravida_real.data_gravida is null and
+	    --  lactante_real.date_enrolled is null
+             /************************* LACTANTES *********************************************/
+     left JOIN  (	select patient_id,min(date_enrolled) as date_enrolled
+		from
+			(Select p.patient_id,min(obs_datetime) date_enrolled
+			from 	patient p 
+					inner join encounter e on p.patient_id=e.patient_id
+					inner join obs o on e.encounter_id=o.encounter_id
+			where 	p.voided=0 and e.voided=0 and o.voided=0 and concept_id = 6332 and value_coded = 1065 
+					and e.encounter_type =6 and o.obs_datetime between date_sub(:endDate, interval 18 MONTH) and :endDate  and 
+					e.location_id=:location
+			group by p.patient_id
+			
+			union
+			
+     	     select 	pgg.patient_id,min(pgg.date_enrolled) as date_enrolled
+						from 	patient pt inner join patient_program pgg on pt.patient_id=pgg.patient_id
+						where 	pgg.voided=0 and pt.voided=0 and pgg.program_id=6 and pgg.date_completed is null 
+						and pgg.date_enrolled between date_sub(:endDate, interval 18 MONTH) and :endDate  and pgg.location_id=:location
+						group by pgg.patient_id
+			) lactante 
+		
+        group by patient_id
+        
+	) lactante_real ON lactante_real.patient_id=criterio_1.patient_id 
+
+  
+left join
+	     /***************************** gravida    *************************************************/
+	(	select patient_id,max(data_gravida) as data_gravida
+		from
+			(Select p.patient_id,max(obs_datetime) data_gravida
+			from 	patient p 
+					inner join encounter e on p.patient_id=e.patient_id
+					inner join obs o on e.encounter_id=o.encounter_id
+			where 	p.voided=0 and e.voided=0 and o.voided=0 and concept_id = 1982 and value_coded = 1065 
+					and e.encounter_type =6 and o.obs_datetime between date_sub(:endDate, interval 9 MONTH) and  :endDate  and 
+					e.location_id=:location
+			group by p.patient_id
+			
+			union
+			
+			select pp.patient_id,pp.date_enrolled as data_gravida
+			from 	patient_program pp 
+			where 	pp.program_id in (3,4,8) and pp.voided=0 and  pp.date_completed is null and
+					pp.date_enrolled between  date_sub(:endDate, interval 9 MONTH) and  :endDate  and pp.location_id=:location
+			) gravida
+            
+          
+		group by patient_id
+	) gravida_real ON gravida_real.patient_id=criterio_1.patient_id 
+
+
+where gravida_real.data_gravida is null and lactante_real.date_enrolled is null and   -- criterio de exclusao : nao estar em algum modelo a mais de um ano
+          criterio_1.patient_id not in (
+          
+        	SELECT e.patient_id
+			FROM encounter e
+               INNER JOIN (
+                   SELECT patient_id,  MAX(e.encounter_datetime) as data_mds
+                   FROM 	   encounter e     
+                                inner join obs o on o.encounter_id =e.encounter_id
+								where e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id in (23724,23725,23726,23727,23729,23730,23731,23732,23888)
+                                and e.location_id=:location and e.encounter_datetime between date_sub(:endDate, interval 12 MONTH) and :endDate
+                   group by patient_id
+                     
+                   ) ultimo_mds on ultimo_mds.patient_id=e.patient_id
+			INNER JOIN  obs o ON o.encounter_id=e.encounter_id
+			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND  o.concept_id in (23724,23725,23726,23727,23729,23730,23731,23732,23888)
+            and e.encounter_datetime=ultimo_mds.data_mds
+            group by patient_id
+          
+          ) 
 		)inicio_real
 
 		INNER JOIN person p ON p.person_id=inicio_real.patient_id
-	     /* criterio MDS 2 CV <1000 cópias/ml nos ultimos 12M */  
+	             /* criterio MDS 2 CV <1000 cópias/ml nos ultimos 12M */  
         left  JOIN
         (	select maior_cv.patient_id,max(valor_cv) valor_cv, data_maior_carga
 			from	
@@ -198,55 +326,6 @@ FROM
 			) inicio_tpi on inicio_tpi.patient_id=inicio_real.patient_id
          /****************************** Ultima linha *****************************************************/
 		      
-     /************************* LACTANTES *********************************************/
-     INNER JOIN  (	select patient_id,min(date_enrolled) as date_enrolled
-		from
-			(Select p.patient_id,min(obs_datetime) date_enrolled
-			from 	patient p 
-					inner join encounter e on p.patient_id=e.patient_id
-					inner join obs o on e.encounter_id=o.encounter_id
-			where 	p.voided=0 and e.voided=0 and o.voided=0 and concept_id = 6332 and value_coded = 1065 
-					and e.encounter_type =6 and o.obs_datetime between date_sub(:endDate, interval 18 MONTH) and :endDate  and 
-					e.location_id=:location
-			group by p.patient_id
-			
-			union
-			
-     	     select 	pgg.patient_id,min(pgg.date_enrolled) as date_enrolled
-						from 	patient pt inner join patient_program pgg on pt.patient_id=pgg.patient_id
-						where 	pgg.voided=0 and pt.voided=0 and pgg.program_id=6 and pgg.date_completed is null 
-						and pgg.date_enrolled between date_sub(:endDate, interval 18 MONTH) and :endDate  and pgg.location_id=:location
-						group by pgg.patient_id
-			) lactante 
-		
-        group by patient_id
-        
-	) lactante_real ON lactante_real.patient_id=inicio_real.patient_id 
-
-
-	     /***************************** gravida    *************************************************/
-	(	select patient_id,max(data_gravida) as data_gravida
-		from
-			(Select p.patient_id,max(obs_datetime) data_gravida
-			from 	patient p 
-					inner join encounter e on p.patient_id=e.patient_id
-					inner join obs o on e.encounter_id=o.encounter_id
-			where 	p.voided=0 and e.voided=0 and o.voided=0 and concept_id = 1982 and value_coded = 1065 
-					and e.encounter_type =6 and o.obs_datetime between date_sub(:endDate, interval 9 MONTH) and  :endDate  and 
-					e.location_id=:location
-			group by p.patient_id
-			
-			union
-			
-			select pp.patient_id,pp.date_enrolled as data_gravida
-			from 	patient_program pp 
-			where 	pp.program_id in (3,4,8) and pp.voided=0 and  pp.date_completed is null and
-					pp.date_enrolled between  date_sub(:endDate, interval 9 MONTH) and  :endDate  and pp.location_id=:location
-			) gravida
-            
-          
-		group by patient_id
-	) gravida_real ON gravida_real.patient_id=inicio_real.patient_id 
 
         LEFT JOIN
         (	
@@ -377,7 +456,7 @@ FROM
 			) pid ON pid.patient_id=inicio_real.patient_id
 		
 
-        /*  ** ******************************************  Busca dos 4 ultimos levantamentos  **** ************************************* */ 
+        /*  ** ******************************************  Busca dos 4 ultimos levantamentos  **** *************************************   */ 
 		left join (
 				  SELECT 	e.patient_id, MAX(e.encounter_datetime) AS quarto_ult_lev, lev3.anti_penul_lev, lev3.penul_lev ,lev3.ult_lev, max(o.value_datetime) as prox_marcado , DATEDIFF(lev3.anti_penul_lev,max(o.value_datetime) ) as dias_atraso_4_3,lev3.dias_atraso_3_2, lev3.dias_atraso_2_1
 				  FROM 		encounter e 
@@ -406,7 +485,7 @@ FROM
 
         ) levantamentos on levantamentos.patient_id = inicio_real.patient_id
     
-           
+         
         	/*********************          ultimo regime n *****************************************/
         left join ( select e.patient_id,  e.encounter_datetime as data_regime , case o.value_coded
 	                    when 1703 then 'AZT+3TC+EFV'
@@ -512,38 +591,15 @@ left join
 			) inscrito_ccr on inscrito_ccr.patient_id=inicio_real.patient_id
           /****************************************************************************/
 	WHERE
-	 -- criterio de exclusao : ultimos 3 levantamentos ou consultas regulares
+	   -- criterio de exclusao : ultimos 3 levantamentos ou consultas regulares
          levantamentos.dias_atraso_2_1 < 5 and
 	     levantamentos.dias_atraso_3_2 < 5 and
-         levantamentos.dias_atraso_4_3 < 5 and
+         levantamentos.dias_atraso_4_3 < 5 and  
         -- 2.   CV ˂ 1000 cópias/ml nos ultimos 12M
             cv.valor_cv < 1000 and
          -- criterio de inclusao : /*** Condição activa do estadio I ou II****/
-         estadio_oms.estadio in (1204,1205) and
-          
-          -- criterio de exclusao : nao estar em algum modelo a mais de um ano
-          inicio_real.patient_id not in (
-          
-        	SELECT e.patient_id
-			FROM encounter e
-               INNER JOIN (
-                   SELECT patient_id,  MAX(e.encounter_datetime) as data_mds
-                   FROM 	   encounter e     
-                                inner join obs o on o.encounter_id =e.encounter_id
-								where e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id in (23724,23725,23726,23727,23729,23730,23731,23732,23888)
-                                and e.location_id=:location and e.encounter_datetime between date_sub(:endDate, interval 12 MONTH) and :endDate
-                   group by patient_id
-                     
-                   ) ultimo_mds on ultimo_mds.patient_id=e.patient_id
-			INNER JOIN  obs o ON o.encounter_id=e.encounter_id
-			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND  o.concept_id in (23724,23725,23726,23727,23729,23730,23731,23732,23888)
-            and e.encounter_datetime=ultimo_mds.data_mds
-            group by patient_id
-          
-          )  and
-     -- criterio de exclusao : Estado de gravidez ou lactação 
-	 gravida_real.data_gravida is null and
-	 lactante_real.date_enrolled is null
+         estadio_oms.estadio in (1204,1205) 
+
 
 ) activos  where idade_actual >= 10  and max_duracao > 6  /*  Estar ha mais de 6 meses dentro de um novo regime */
 GROUP BY patient_id

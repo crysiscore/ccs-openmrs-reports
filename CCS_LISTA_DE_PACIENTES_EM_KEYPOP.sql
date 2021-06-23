@@ -22,8 +22,8 @@ FROM
             DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') as data_inicio,
             cd4.value_numeric cd4,
             cv.carga_viral,
-            keypop.populacaochave,
-            DATE_FORMAT(keypop.data_keypop,'%d/%m/%Y') as data_keypop,
+            inicio_real.populacaochave,
+            DATE_FORMAT(inicio_real.data_keypop,'%d/%m/%Y') as data_keypop,
             linha_terapeutica.linhat as linhaterapeutica,
             tipo_dispensa.tipodispensa,
 			telef.value AS telefone,
@@ -43,7 +43,7 @@ FROM
 
 			
 	FROM	
-	(	SELECT patient_id,MIN(data_inicio) data_inicio
+	(	SELECT keypop.patient_id,MIN(data_inicio) data_inicio, data_keypop, populacaochave
 		FROM
 			(	
 			
@@ -93,10 +93,8 @@ FROM
 				
 				
 			) inicio
-		GROUP BY patient_id	
-	)inicio_real
-		INNER JOIN person p ON p.person_id=inicio_real.patient_id
-		  /************************** keypop concept_id = 23703 ****************************/
+            
+            		  /************************** keypop concept_id = 23703 ****************************/
 		INNER JOIN 
 		(
 			SELECT 	e.patient_id,
@@ -119,8 +117,12 @@ FROM
             INNER JOIN obs o ON o.encounter_id=e.encounter_id
 			WHERE 	e.encounter_type IN (6,9,34,35) AND ult_visita_keypop.data_ult_keypop = e.encounter_datetime AND e.voided=0 
             AND o.voided=0 AND o.concept_id = 23703 AND o.location_id=:location
-            group by patient_id
-		) keypop ON keypop.patient_id=inicio_real.patient_id
+            group by e.patient_id
+		) keypop ON keypop.patient_id=inicio.patient_id
+	   group by inicio.patient_id
+	)inicio_real
+		INNER JOIN person p ON p.person_id=inicio_real.patient_id
+
 		
         left JOIN		
 		(	SELECT ultimavisita.patient_id,ultimavisita.encounter_datetime,o.value_datetime,e.location_id
@@ -392,6 +394,6 @@ SELECT 	e.patient_id,
     AND p.value IS NOT NULL AND p.value<>'' AND p.voided=0 
 	) telef  ON telef.person_id = inicio_real.patient_id
 
-	WHERE  keypop.data_keypop between :startDate and :endDate
+	WHERE  inicio_real.data_keypop between :startDate and :endDate
 ) activos
 GROUP BY patient_id

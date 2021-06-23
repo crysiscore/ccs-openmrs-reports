@@ -110,8 +110,7 @@ Select patient_id,min(data_inicio) data_inicio
 						  WHERE		p.voided=0 and e.encounter_type=18 AND e.voided=0 and e.encounter_datetime<=:endDate and e.location_id=:location
 						  GROUP BY 	p.patient_id
 					  
-						union
-						
+					
 						/*Patients with first drugs pick up date set: Recepcao Levantou ARV*/
 						/*Select 	p.patient_id,min(value_datetime) data_inicio
 						from 	patient p

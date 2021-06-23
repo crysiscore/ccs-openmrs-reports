@@ -18,8 +18,9 @@ Created Date: 18-09-2020
 Change by: Agnaldo  Samuel
 Change Date: 16/06/2021 
 Change Reason: Code improvement
-               - Considerar a carga viral qualitativa na query
-			   - optimizar algoritmo de busca dos 4 ultimos levantamentos
+          - Considerar a carga viral qualitativa nos critérios de inclusão
+          - Optimizar algoritmo de busca os 4 últimos levantamentos (mais rápido)
+
 
 */
 /*
