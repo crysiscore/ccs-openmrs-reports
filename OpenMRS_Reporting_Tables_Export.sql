@@ -23,3 +23,5 @@ mysqldump  -uesaude -p -h127.0.0.1 -P3306 xipamanine reporting_report_design rep
 -- Xipamanine DB 23/06/2021
 mysqldump   --column-statistics=0 -uroot  -p -h127.0.0.1 -P3306  openmrs  reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_23_06_2021.sql
 
+-- openmrs DB 25/10/2021
+mysqldump  -uesaude -p -h127.0.0.1 -P3306 openmrs reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_25_10_2021.sql 

@@ -23,55 +23,6 @@ Change Reason: Code improvement
 
 */
 
-/*
-Name: CCS SQL PACIENTES ELEGIVEIS MDS MAIOR 10 ANOS
-Description:
-              A) Perfil de Pacientes para inclusão dos MDS: 
-                - ≥16 mêses em TARV 
-                -  CV ˂ 1000 cópias/ml nos ultimos 12M 
-                - Aderente (últimos 3 levantamentos ou consultas regulares) 
-                - Estar ha mais de 6 meses dentro de um novo regime C
-              b) Critérios de exclusão 
-                - Condição activa do estadio III ou IV (ex. TB, Sarcoma de Kaposi, DAM, DAG, Diarreia cronica, Candidiase oral/esofagica) 
-                - Presença de reação adversa a medicamentos
-                - Mudança de linha ou regime de tratamento por menos 6 de  meses
-    
-
-Created By: Agnaldo Samuel
-Created Date: 18-09-2020
-
-Change by: Agnaldo  Samuel
-Change Date: 16/06/2021 
-Change Reason: Code improvement
-               - Considerar a carga viral qualitativa na query
-			   - optimizar algoritmo de busca dos 4 ultimos levantamentos
-
-*/
-/*
-Name: CCS SQL PACIENTES ELEGIVEIS MDS MAIOR 10 ANOS
-Description:
-              A) Perfil de Pacientes para inclusão dos MDS: 
-                - ≥16 mêses em TARV 
-                -  CV ˂ 1000 cópias/ml nos ultimos 12M 
-                - Aderente (últimos 3 levantamentos ou consultas regulares) 
-                - Estar ha mais de 6 meses dentro de um novo regime C
-              b) Critérios de exclusão 
-                - Condição activa do estadio III ou IV (ex. TB, Sarcoma de Kaposi, DAM, DAG, Diarreia cronica, Candidiase oral/esofagica) 
-                - Presença de reação adversa a medicamentos
-                - Mudança de linha ou regime de tratamento por menos 6 de  meses
-    
-
-Created By: Agnaldo Samuel
-Created Date: 18-09-2020
-
-Change by: Agnaldo  Samuel
-Change Date: 16/06/2021 
-Change Reason: Code improvement
-               - Considerar a carga viral qualitativa na query
-			   - optimizar algoritmo de busca dos 4 ultimos levantamentos
-
-*/
-
 
 
  SELECT * 
@@ -160,19 +111,17 @@ FROM ( SELECT 	inicio_real.patient_id,
 	) criterio_1
 
         INNER JOIN		
-		(	SELECT ultimavisita.patient_id,ultimavisita.encounter_datetime,max(o.value_datetime) value_datetime ,e.location_id,e.encounter_type
+		(	
+SELECT lastvis.patient_id,lastvis.value_datetime,lastvis.encounter_type
 			FROM
-				(	SELECT 	p.patient_id,MAX(encounter_datetime) AS encounter_datetime
+				(	SELECT 	p.patient_id,MAX(o.value_datetime) AS value_datetime, e.encounter_type 
 					FROM 	encounter e 
-							INNER JOIN patient p ON p.patient_id=e.patient_id 		
-					WHERE 	e.voided=0 AND p.voided=0 AND e.encounter_type IN (6,9,18) AND 
-							e.location_id=:location AND e.encounter_datetime<=:endDate
+					INNER JOIN obs o ON o.encounter_id=e.encounter_id 
+					INNER JOIN patient p ON p.patient_id=e.patient_id 		
+					WHERE 	e.voided=0 AND p.voided=0 and o.voided =0  AND e.encounter_type IN (6,9,18) AND  o.concept_id in (5096 ,1410)
+						and	e.location_id=:location AND e.encounter_datetime <=:endDate  and o.value_datetime is  not null 
 					GROUP BY p.patient_id
-				) ultimavisita
-				INNER JOIN encounter e ON e.patient_id=ultimavisita.patient_id
-				LEFT JOIN obs o ON o.encounter_id=e.encounter_id AND (o.concept_id=5096 OR o.concept_id=1410) AND e.encounter_datetime=ultimavisita.encounter_datetime			
-			WHERE  o.voided=0  AND e.voided =0 AND e.encounter_type IN (6,9,18) AND e.location_id=:location
-            group by patient_id
+				) lastvis
 		) ultimavisita ON ultimavisita.patient_id=criterio_1.patient_id and DATEDIFF(:endDate,ultimavisita.value_datetime) <= 28
         
         -- criterio de exclusao : Estado de gravidez ou lactação 
