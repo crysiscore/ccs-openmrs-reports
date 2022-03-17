@@ -6,6 +6,18 @@ Description:
 Created By - Agnaldo Samuel
 Created Date-  23/11/2021
 
+
+Modified By - Agnaldo Samuel
+Modification  Date-  12/01/20212
+Reason: 
+Inclusao da variavel estado de permanencia e  tipo de profilaxia TPT
+
+
+USE openmrs;
+SET :startDate:='2020-06-21';
+SET :endDate:='2021-12-20';
+SET :location:=208;
+set  :modelo:= 'DISPENSA TRIMESTRAL';
 */
 
 
@@ -22,9 +34,13 @@ FROM
 			DATE_FORMAT(modelodf.data_modelo ,'%d/%m/%Y') AS data_inscricao,
             modelodf.modelodf,
             DATE_FORMAT(modelodf_ultimo.data_modelo,'%d/%m/%Y') AS data_ult_actualizacao,
+            DATE_FORMAT(ultima_profilaxia.data_ultima_profilaxia ,'%d/%m/%Y' ) AS data_ultima_profilaxia,
+            ultima_profilaxia.profilaxia ,
+            ultima_profilaxia.origem_prof,
             regime.ultimo_regime,
-			DATE_FORMAT(visita.encounter_datetime,'%d/%m/%Y') AS data_ult_consulta,
-            DATE_FORMAT(visita.value_datetime,'%d/%m/%Y') AS consulta_proximo_marcado,
+            IF(DATEDIFF(:endDate,visita.value_datetime)<=28,'ACTIVO EM TARV','ABANDONO NAO NOTIFICADO') estado,
+			DATE_FORMAT(seguimento.encounter_datetime,'%d/%m/%Y') AS data_ult_consulta,
+            DATE_FORMAT(seguimento.value_datetime,'%d/%m/%Y') AS consulta_proximo_marcado,
             DATE_FORMAT(fila.encounter_datetime,'%d/%m/%Y') AS data_ult_levantamento,
             DATE_FORMAT(fila.value_datetime,'%d/%m/%Y') AS fila_proximo_marcado,
 	        DATE_FORMAT(ultima_cv.data_ultima_carga,'%d/%m/%Y') AS data_ultima_carga,
@@ -138,6 +154,19 @@ FROM
           
 		) modelodf ON modelodf.patient_id=inicio_real.patient_id AND modelodf.data_modelo IS NOT NULL AND modelodf.data_modelo between :startDate and :endDate
 		
+        LEFT JOIN
+        (	SELECT ultimavisita.patient_id,ultimavisita.value_datetime,ultimavisita.encounter_type
+			FROM
+				(	SELECT 	p.patient_id,MAX(o.value_datetime) AS value_datetime, e.encounter_type 
+					FROM 	encounter e 
+					INNER JOIN obs o ON o.encounter_id=e.encounter_id 
+					INNER JOIN patient p ON p.patient_id=e.patient_id 		
+					WHERE 	e.voided=0 AND p.voided=0 and o.voided =0  AND e.encounter_type IN (6,9,18) AND  o.concept_id in (5096 ,1410)
+						and	e.location_id=:location AND e.encounter_datetime <=:endDate  and o.value_datetime is  not null
+					GROUP BY p.patient_id
+				) ultimavisita
+
+		) visita ON visita.patient_id=modelodf.patient_id
 	               
 		LEFT JOIN 
 			(	SELECT pad1.*
@@ -279,7 +308,7 @@ FROM
 		INNER JOIN obs o ON o.encounter_id=e.encounter_id			
 		WHERE o.concept_id=1410 AND o.voided=0 AND e.voided=0 AND e.encounter_datetime=ultimoSeguimento.encounter_datetime AND 
 		e.encounter_type IN (6,9) 
-		) visita ON visita.patient_id=modelodf.patient_id 
+		) seguimento ON seguimento.patient_id=modelodf.patient_id 
 	
 	/* ******************************* ultima carga viral **************************** */
 		LEFT JOIN (	    SELECT 	e.patient_id,
@@ -313,7 +342,37 @@ FROM
 			
 		) ultima_cv ON ultima_cv.patient_id=modelodf.patient_id 
 
-
+	/* ******************************* ultima profilaxia **************************** */
+		LEFT JOIN (	 
+        
+            SELECT 	e.patient_id,
+				CASE o.value_coded
+                WHEN 656   THEN  'Isoniazida'
+                WHEN 23982 THEN  'Isoniazida + Piridoxina'
+                WHEN 755   THEN  'Levofloxacina'
+                WHEN 23983 THEN  'Levofloxacina + Piridoxina'
+                WHEN 23954 THEN  ' 3HP (Rifapentina + Isoniazida)'
+                WHEN 23984 THEN  '3HP + Piridoxina'
+                ELSE ''
+                END  AS profilaxia,
+				ult_prof.data_prof data_ultima_profilaxia,
+                fr.name AS origem_prof
+                FROM  encounter e 
+                INNER JOIN	(
+							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_prof
+							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
+							WHERE e.encounter_type IN (6,9,53,60) AND e.voided=0 AND o.voided=0 AND o.concept_id =23985
+							GROUP BY patient_id
+				) ult_prof
+                ON e.patient_id=ult_prof.patient_id
+				INNER JOIN obs o ON o.encounter_id=e.encounter_id 
+                LEFT JOIN form fr ON fr.form_id = e.form_id
+                WHERE e.encounter_datetime=ult_prof.data_prof	
+				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN  (6,9,53,60) AND
+				o.voided=0 AND 	o.concept_id  =23985  AND  e.encounter_datetime <= :endDate 
+                GROUP BY e.patient_id
+		
+		) ultima_profilaxia ON ultima_profilaxia.patient_id=modelodf.patient_id 
   /************************** Modelos  o.concept_id in (23724,23725,23726,23727,23729,23730,23731,23732,23888) ****************************/
 		left JOIN 
 		(			SELECT mdl.patient_id,  mdl.modelodf, MAX(mdl.data_modelo) AS data_modelo  FROM (
