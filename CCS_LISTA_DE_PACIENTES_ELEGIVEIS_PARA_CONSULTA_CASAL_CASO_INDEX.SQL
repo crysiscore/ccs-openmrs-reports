@@ -13,7 +13,8 @@ DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') as data_inicio,
 			DATE_FORMAT(ult_seguimento.encounter_datetime, '%d/%m/%Y') AS data_ult_consulta,
             DATE_FORMAT(ult_seguimento.value_datetime, '%d/%m/%Y') AS data_proxima_visita,
             DATE_FORMAT(fila.encounter_datetime,'%d/%m/%Y') AS data_ult_levantamento,
-            DATE_FORMAT(fila.value_datetime,'%d/%m/%Y') AS fila_proximo_marcado 
+            DATE_FORMAT(fila.value_datetime,'%d/%m/%Y') AS fila_proximo_marcado ,
+            telef.value AS telefone
             
             FROM ( select 
         e.patient_id,
@@ -451,4 +452,10 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
                 WHERE  o.concept_id=5096 AND e.encounter_datetime=ultimavisita.encounter_datetime AND			
 			  o.voided=0  AND e.voided =0 AND e.encounter_type =18  AND e.location_id=:location
 		) fila ON fila.patient_id=f_nome.patient_id 
- 
+ /* ******************************* Telefone **************************** */
+	LEFT JOIN (
+		SELECT  p.person_id, p.value  
+		FROM person_attribute p
+     WHERE  p.person_attribute_type_id=9 
+    AND p.value IS NOT NULL AND p.value<>'' AND p.voided=0 
+	) telef  ON telef.person_id = f_nome.patient_id

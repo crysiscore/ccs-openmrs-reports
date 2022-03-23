@@ -66,7 +66,9 @@ left join(  -- ultima visita com prescricao 3HP no periodo
 
 
 
-select inicio_real_3hp.patient_id, inicio_real_3hp.data_inicio_3hp, tpt_dispensa_tr.data_3hp_trim , tpt_dispensa_men.total from 
+select inicio_real_3hp.patient_id, inicio_real_3hp.data_inicio_3hp, tpt_dispensa_tr.data_3hp_trim ,  DATE_FORMAT(duracao_trat_3hp.data_min_3hp_mensal,'%d/%m/%Y') as data_min_3hp_mensal ,
+ DATE_FORMAT(duracao_trat_3hp.data_max_3hp_mensal,'%d/%m/%Y') as data_max_3hp_mensal ,tpt_dispensa_men.total as total_mensal,
+duracao_trat_3hp.duracao from 
 ( select reg_3hp.patient_id, inicio_prof.data_inicio_3hp 
 	from 
 	(	SELECT p.patient_id, max(encounter_datetime) data_reg_3hp
@@ -105,7 +107,6 @@ SELECT p.patient_id, min(encounter_datetime) data_3hp_trim
 ) tpt_dispensa_tr on tpt_dispensa_tr.patient_id =inicio_real_3hp.patient_id  and tpt_dispensa_tr.data_3hp_trim = inicio_real_3hp.data_inicio_3hp
 
 
-
 left join (  -- Tipo dispensa 3hp mensal
 
 -- ESTADO DA PROFLAXIA 
@@ -114,7 +115,32 @@ SELECT p.patient_id, count(*) as total
 				INNER JOIN encounter e ON e.patient_id=p.patient_id
 				INNER JOIN obs o ON o.encounter_id=e.encounter_id
 			WHERE 	p.voided=0 AND e.voided=0 AND e.encounter_type =60 AND e.encounter_datetime BETWEEN @startDate AND @endDate
-			AND o.voided=0 AND o.concept_id=23986 AND o.value_coded =1098 -- Trimestral 
+			AND o.voided=0 AND o.concept_id=23986 AND o.value_coded =1098 -- mensal 
 	GROUP BY p.patient_id
   
 ) tpt_dispensa_men on tpt_dispensa_men.patient_id =inicio_real_3hp.patient_id
+
+left join (  -- Tipo dispensa 3hp mensal
+select min_3hp_mensal.patient_id, min_3hp_mensal.data_min_3hp_mensal, max_3hp_mensal.data_max_3hp_mensal, datediff( max_3hp_mensal.data_max_3hp_mensal,min_3hp_mensal.data_min_3hp_mensal) as duracao
+
+from (
+SELECT p.patient_id, min(encounter_datetime) data_min_3hp_mensal
+			FROM 	patient p 
+				INNER JOIN encounter e ON e.patient_id=p.patient_id
+				INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	p.voided=0 AND e.voided=0 AND e.encounter_type =60 AND e.encounter_datetime BETWEEN @startDate AND @endDate
+			AND o.voided=0 AND o.concept_id=23986 AND o.value_coded =1098 -- mensal 
+	GROUP BY p.patient_id
+    ) min_3hp_mensal
+    left join 
+     (
+SELECT p.patient_id, max(encounter_datetime) data_max_3hp_mensal
+			FROM 	patient p 
+				INNER JOIN encounter e ON e.patient_id=p.patient_id
+				INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	p.voided=0 AND e.voided=0 AND e.encounter_type =60 AND e.encounter_datetime BETWEEN @startDate AND @endDate
+			AND o.voided=0 AND o.concept_id=23986 AND o.value_coded =1098 -- mensal 
+	GROUP BY p.patient_id
+    ) max_3hp_mensal on max_3hp_mensal.patient_id = min_3hp_mensal.patient_id
+  
+) duracao_trat_3hp on duracao_trat_3hp.patient_id =inicio_real_3hp.patient_id
