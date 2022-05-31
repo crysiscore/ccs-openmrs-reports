@@ -1,9 +1,9 @@
 
-USE bagamoio;
-SET @startDate:='2015-01-21';
-SET @endDate:='2022-03-20';
-SET @location:=212;
 
+/*** Patients who completed 3HP Therapy - CDC  TFR7 on TPT Completition Cascade ***/
+select patient_id, ultima_cons_3hp as data_tx_new_tpt
+from 
+(
 select inicio_real_3hp.patient_id, inicio_real_3hp.data_inicio_3hp, total_consultas_3hp.total as total_consultas_3hp ,ult_visit_3hp.ultima_cons_3hp,
  datediff(ult_visit_3hp.ultima_cons_3hp,inicio_real_3hp.data_inicio_3hp)/30 as duration
  from 
@@ -59,14 +59,19 @@ left join(  -- ultima visita com prescricao 3HP no periodo
 )  ult_visit_3hp on ult_visit_3hp.patient_id =inicio_real_3hp.patient_id 
 
  where datediff(ult_visit_3hp.ultima_cons_3hp,inicio_real_3hp.data_inicio_3hp)/30 >= 4 and total_consultas_3hp.total >=3
-
+) criterio1 
 
 --   segundo criterio
 
+union all
 
 
+select 
 
-select inicio_real_3hp.patient_id, inicio_real_3hp.data_inicio_3hp, tpt_dispensa_tr.data_3hp_trim ,  DATE_FORMAT(duracao_trat_3hp.data_min_3hp_mensal,'%d/%m/%Y') as data_min_3hp_mensal ,
+patient_id, data_inicio_3hp as data_tx_new_tpt
+
+from (
+select inicio_real_3hp.patient_id, inicio_real_3hp.data_inicio_3hp, if( tpt_dispensa_tr.data_3hp_trim is not null ,1,data_3hp_trim)  as tpt_trimestral ,  DATE_FORMAT(duracao_trat_3hp.data_min_3hp_mensal,'%d/%m/%Y') as data_min_3hp_mensal ,
  DATE_FORMAT(duracao_trat_3hp.data_max_3hp_mensal,'%d/%m/%Y') as data_max_3hp_mensal ,tpt_dispensa_men.total as total_mensal,
 duracao_trat_3hp.duracao from 
 ( select reg_3hp.patient_id, inicio_prof.data_inicio_3hp 
@@ -144,3 +149,6 @@ SELECT p.patient_id, max(encounter_datetime) data_max_3hp_mensal
     ) max_3hp_mensal on max_3hp_mensal.patient_id = min_3hp_mensal.patient_id
   
 ) duracao_trat_3hp on duracao_trat_3hp.patient_id =inicio_real_3hp.patient_id
+
+
+) criterio2 where tpt_trimestral =1 or total_mensal >=4 and duracao <= 120

@@ -5,8 +5,9 @@ Description -
 		•	Inicios TARV (do período que se pretende extrair a lista), 
 		•	Reinicios (do período que se pretende extrair a lista), 
 		•	Grávidas 
-		•	Falências: 2 CVs consecutivas acima de 1000;
-		Incluir como variável:
+		•	Falências- 2 CVs consecutivas acima de 1000; Ficha LAB
+		•	Ter iniciado TB ou estar em tratamento TB no periodo( Ficha clinica)
+		Incluir como variável
 		•	último Resultado do CD4 abaixo de 200;
 		•	pacientes com teste de CrAG e TB_LAM;
 		•	Data de Inicio TARV;
@@ -21,6 +22,8 @@ Modification Reason: Novos criterios de elegibilidade
 
 */
 
+
+
 SELECT 
     *
 FROM
@@ -32,14 +35,16 @@ FROM
             DATE_FORMAT(p.birthdate, '%d/%m/%Y') AS birthdate,
             ROUND(DATEDIFF(:endDate, p.birthdate) / 365) idade_actual,
             DATE_FORMAT(inicio_real.data_inicio, '%d/%m/%Y') AS data_inicio,
-               DATE_FORMAT(gravida_real.data_gravida, '%d/%m/%Y') AS data_gravida,
-               DATE_FORMAT(falencia_cv.data_ult_cv, '%d/%m/%Y') AS data_ult_cv,
+            DATE_FORMAT(gravida_real.data_gravida, '%d/%m/%Y') AS data_gravida,
+            DATE_FORMAT(  marcado_tb.data_marcado_tb , '%d/%m/%Y') AS data_marcado_tb,
+            DATE_FORMAT(falencia_cv.data_ult_cv, '%d/%m/%Y') AS data_ult_cv,
             falencia_cv.ult_cv,
                DATE_FORMAT(falencia_cv.data_penult_cv, '%d/%m/%Y') AS data_penult_cv,
             falencia_cv.penult_cv,
             tb_lam.resul_tb_lam,
             tb_crag.resul_tb_crag,
             cd4.value_numeric AS cd4,
+             DATE_FORMAT( cd4.encounter_datetime, '%d/%m/%Y') as data_cd4,
             permanencia.estado_permanencia,
 			DATE_FORMAT(permanencia.data_consulta, '%d/%m/%Y') AS data_consulta,
             telef.value AS telefone,
@@ -175,6 +180,29 @@ FROM
             AND pp.date_enrolled BETWEEN :startDate AND :endDate
             AND pp.location_id = :location) gravida
     GROUP BY patient_id) gravida_real ON gravida_real.patient_id = inicio_real.patient_id
+
+        /************************** TRATAMENTO DE TUBERCULOSE NA FICHA CLINICA  ****************************/
+               left join 
+		( Select ultimavisita_tb.patient_id, ultimavisita_tb.encounter_datetime data_marcado_tb,
+        CASE o.value_coded
+					WHEN '1256'  THEN 'INICIO'
+					WHEN '1257' THEN 'CONTINUA'
+				
+				ELSE '' END AS tratamento_tb
+			from
+
+			(	select 	e.patient_id,max(encounter_datetime) as encounter_datetime
+				from 	encounter e 
+                        inner join obs o on o.encounter_id =e.encounter_id
+				       and 	e.voided=0  and o.voided=0   and o.concept_id=1268 and e.encounter_type IN (6,9)  and e.location_id=:location 
+				group by e.patient_id
+			) ultimavisita_tb
+			inner join encounter e on e.patient_id=ultimavisita_tb.patient_id
+			inner join obs o on o.encounter_id=e.encounter_id			
+			where o.concept_id=1268 and o.voided=0 and e.encounter_datetime=ultimavisita_tb.encounter_datetime and 
+			e.encounter_type in (6,9) and o.value_coded in (1256,1257) and e.location_id=:location 
+		) marcado_tb on marcado_tb.patient_id =   inicio_real.patient_id
+
     LEFT JOIN (SELECT 
         e.patient_id,
             lv.data_ult_cv,
@@ -202,12 +230,12 @@ FROM
     FROM
         encounter e
     WHERE
-        e.encounter_type IN (6 , 9, 13, 53)
+        e.encounter_type =13
             AND e.voided = 0
     GROUP BY patient_id) ult_cv ON ult_cv.patient_id = e.patient_id
     INNER JOIN obs o ON o.encounter_id = e.encounter_id
     WHERE
-        e.encounter_type IN (6 , 9, 13, 53)
+        e.encounter_type =13
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 856
@@ -215,7 +243,7 @@ FROM
             AND e.location_id = :location
     GROUP BY patient_id) last_viral_load ON last_viral_load.patient_id = e.patient_id
     WHERE
-        e.encounter_type IN (6 , 9, 13, 53)
+        e.encounter_type =13
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 856
@@ -224,7 +252,7 @@ FROM
     GROUP BY e.patient_id) lv ON lv.patient_id = e.patient_id
     INNER JOIN obs o ON o.encounter_id = e.encounter_id
     WHERE
-        e.encounter_type IN (6 , 9, 13, 53)
+        e.encounter_type =13
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 856
@@ -282,7 +310,7 @@ FROM
             AND e.location_id = :location
             AND o.voided = 0
             AND o.concept_id = 5497
-            AND e.encounter_type = 13) cd4_max
+            AND e.encounter_type IN (6 , 9, 13, 53) ) cd4_max
     GROUP BY patient_id) cd4_temp ON e.patient_id = cd4_temp.patient_id
     INNER JOIN obs o ON o.encounter_id = e.encounter_id
     WHERE
@@ -420,7 +448,8 @@ FROM
             OR (ult_cv > 1000 AND penult_cv > 1000)
             OR resul_tb_lam IS NOT NULL
             OR resul_tb_crag IS NOT NULL
-            OR permanencia.estado_permanencia = 'REINICIO') activos
+            OR permanencia.estado_permanencia = 'REINICIO'
+            or data_marcado_tb is NOT NULL) activos
 WHERE
     patient_id NOT IN (SELECT 
             pg.patient_id
@@ -435,7 +464,6 @@ WHERE
                 AND p.voided = 0
                 AND pg.program_id = 2
                 AND ps.state IN (7 , 8, 9, 10)
-                AND ps.end_date IS NULL
                 AND location_id = :location
                 AND ps.start_date <= :endDate)
 GROUP BY patient_id

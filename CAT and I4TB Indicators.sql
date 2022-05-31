@@ -17,9 +17,10 @@ SELECT 	indicador_1.us, new_0_14, new_15, consulta_pick_up_0_14, consulta_pick_u
 	txt_complete_tpt_0_14, txt_complete_tpt_15,
 	txt_new_complete_tpt_0_14, txt_new_complete_tpt_15,
 	txt_curr_tpt_complete_0_14, txt_curr_tpt_complete_15,
-	txt_complete_3hp_tpt_0_14, txt_complete_3hp_tpt_15,
-	txt_new_complete_3hp_tpt_0_14,txt_new_complete_3hp_tpt_15,
-	txt_curr_tpt_complete_3hp_0_14, txt_curr_tpt_complete_3hp_15
+	if(txt_complete_3hp_tpt_0_14 is null,0,txt_complete_3hp_tpt_0_14) as txt_complete_3hp_tpt_0_14, if(txt_complete_3hp_tpt_15 is null,0,txt_complete_3hp_tpt_15) as txt_complete_3hp_tpt_15,
+	if(txt_new_complete_3hp_tpt_0_14 is null , 0, txt_new_complete_3hp_tpt_0_14) as txt_new_complete_3hp_tpt_0_14 , if(txt_new_complete_3hp_tpt_15 is null ,0 ,txt_new_complete_3hp_tpt_15) as txt_new_complete_3hp_tpt_15,
+	if(txt_curr_tpt_complete_3hp_0_14 is null ,0,txt_curr_tpt_complete_3hp_0_14) as txt_curr_tpt_complete_3hp_0_14  , if(txt_curr_tpt_complete_3hp_15 is null, 0 ,txt_curr_tpt_complete_3hp_15) as txt_curr_tpt_complete_3hp_15
+
 FROM
 
 (

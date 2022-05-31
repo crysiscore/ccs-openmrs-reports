@@ -89,10 +89,10 @@ FROM
 
 	) criterio_1
 INNER JOIN 
-         /***************************** gravida    *************************************************/
+    /*****************************   gravida    *************************************************/
 	(	select patient_id,max(data_gravida) as data_gravida
 		from
-			(Select p.patient_id,max(obs_datetime) data_gravida
+			( Select p.patient_id,max(obs_datetime) data_gravida
 			from 	patient p 
 					inner join encounter e on p.patient_id=e.patient_id
 					inner join obs o on e.encounter_id=o.encounter_id

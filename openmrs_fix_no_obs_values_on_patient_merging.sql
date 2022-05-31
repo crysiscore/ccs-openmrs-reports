@@ -557,10 +557,19 @@ delete from obs where  concept_id=5090 and value_numeric =0;
 update obs set value_numeric =0 where concept_id =1715 and value_numeric is null;
 update concept_numeric set allow_decimal =1 where  concept_id in (5086,5085);
 
-update obs set obs_group_id = NULL
+
+-- Allegias a medicamentos 
+delete from obs where concept_id =1669 and value_coded  is null and obs_group_id is null;
+
+
+
+
+UPDATE obs SET value_datetime =  DATE_ADD(obs_datetime, INTERVAL 1 MONTH) WHERE concept_id=5096 AND value_datetime IS NULL;
+ 
+
+ update obs set obs_group_id = NULL
 where obs_id in (
     select * from (select obs_id from obs where  obs_group_id not in (select obs_id from obs )) ast
 );
-
 
 SET FOREIGN_KEY_CHECKS=1;
