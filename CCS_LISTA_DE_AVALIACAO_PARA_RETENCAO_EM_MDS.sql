@@ -1,6 +1,6 @@
 /*
 Name - CCS_LISTA_DE_AVALIACAO_PARA_RETENCAO_EM_MDS
-Description:
+Description
               - Avaliacao de retencao num modelo especifico
 
 Created By - Agnaldo Samuel
@@ -14,13 +14,11 @@ Inclusao da variavel estado de permanencia e  tipo de profilaxia TPT
 
 
 USE openmrs;
-SET :startDate:='2020-06-21';
-SET :endDate:='2021-12-20';
-SET :location:=208;
-set  :modelo:= 'DISPENSA TRIMESTRAL';
+SET startDate='2020-06-21';
+SET endDate='2021-12-20';
+SET location=208;
+set modelo= 'DISPENSA TRIMESTRAL';
 */
-
-
 
 
 SELECT * 
@@ -106,19 +104,19 @@ FROM
 		INNER JOIN person p ON p.person_id=inicio_real.patient_id
 		  /************************** Modelos  o.concept_id in (23724,23725,23726,23727,23729,23730,23731,23732,23888) ****************************/
 		INNER JOIN 
-		(			SELECT mdl.patient_id,  mdl.modelodf, MIN(mdl.data_modelo) AS data_modelo  FROM (
+		(	 SELECT mdl.patient_id,  mdl.modelodf, MIN(mdl.data_modelo) AS data_modelo  FROM (
               SELECT 	e.patient_id,
 				CASE o.concept_id
-					WHEN '23724'  THEN 'GAAC (GA)'
-					WHEN '23725'  THEN 'ABORDAGEM FAMILIAR'
-					WHEN '23726'  THEN 'CLUBES DE ADESAO (CA)'
-					WHEN '23727'  THEN 'PARAGEM UNICA (PU)'  
-                    WHEN '23729'  THEN  'FLUXO RAPIDO (FR)'
-					WHEN '23730'  THEN  'DISPENSA TRIMESTRAL (DT)'
-					WHEN '23731'  THEN 'DISPENSA COMUNITARIA (DC)'
+					WHEN '23724'  THEN 'Grupos de Apoio para adesao comunitaria'
+					WHEN '23725'  THEN 'Abordagem Familiar'
+					WHEN '23726'  THEN 'Clubes de Adesao'
+					WHEN '23727'  THEN 'PARAGEM UNICA'  
+                    WHEN '23729'  THEN  'Fluxo Rapido'
+					WHEN '23730'  THEN  'Dispensa Trimestral de ARV'
+					WHEN '23731'  THEN 'Dispensa Comunitaria'
 					WHEN '23732'  THEN 'OUTRO MODELO'
-                    WHEN '23888'  THEN 'DISPENSA SEMESTRAL'
-                    WHEN '165177' THEN 'FARMAC/Farmácia Privada'
+                    WHEN '23888'  THEN 'Dispensa Semestral de ARV'
+                    WHEN '165177' THEN 'FARMAC/Farmacia Privada'
 				ELSE '' END AS modelodf, 
                  o.value_coded,
 				MIN(encounter_datetime) AS data_modelo
@@ -126,14 +124,14 @@ FROM
 			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
 			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND  o.location_id=:location and  o.concept_id in  
             (select case :modelo
-                       when 'GAAC'  then 23724
-                       when 'ABORDAGEM FAMILIAR' then 23725 
-                       when 'CLUBES DE ADESAO' then 23726 
+                       when 'Grupos de Apoio para adesao comunitaria'  then 23724
+                       when 'Abordagem Familiar' then 23725 
+                       when 'Clubes de Adesao' then 23726 
                        when 'PARAGEM UNICA' then 23727 
-                       when 'FLUXO RAPIDO' then 23729
-                       when 'DISPENSA TRIMESTRAL' then 23730
-                       when 'DISPENSA COMUNITARIA' then 23731
-                       when 'DISPENSA SEMESTRAL' then  23888
+                       when 'Fluxo Rapido' then 23729
+                       when 'Dispensa Trimestral de ARV' then 23730
+                       when 'Dispensa Comunitaria' then 23731
+                       when 'Dispensa Semestral de ARV' then  23888
                        when 'Farmacia Privada' then 165177 end  )
             GROUP BY patient_id
           
@@ -143,14 +141,72 @@ FROM
              			
               SELECT 	e.patient_id,
 				CASE o.value_coded
-                    WHEN '23888' THEN 'DISPENSA SEMESTRAL'
+                    WHEN '23888' THEN 'Dispensa Semestral de ARV'
 				ELSE '' END AS modelodf, 
                  o.value_coded,
 				MIN(encounter_datetime) AS data_modelo
 			FROM 	obs o
 			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
-			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id =23739 AND o.value_coded= ( select case :modelo when 'DISPENSA TRIMESTRAL (DT)' then 23888 else 1111 end  )  AND o.location_id=:location
+			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id =23739 AND o.value_coded= ( select case :modelo when 'Dispensa Semestral de ARV' then 23888 else 1111 end  )  AND o.location_id=:location
             GROUP BY patient_id ) mdl  GROUP BY patient_id
+
+			UNION ALL
+	
+		SELECT first_mdf.patient_id,
+        CASE o.value_coded
+			WHEN 23730 THEN 'Dispensa Trimestral de ARV'
+            WHEN 23888 THEN 'Dispensa Semestral de ARV'
+            WHEN 165314 THEN 'Dispensa Anual de ARV'
+            WHEN 165315 THEN 'Dispensa Descentralizada de ARV'
+            WHEN 165178 THEN 'DCP - Dispensa Comunitaria atraves do Provedor'
+            WHEN 165179 THEN 'DCA - Dispensa Comunitaria atraves do APE'
+            WHEN 165265 THEN 'BM - Dispensa Comunitaria atraves de Brigadas Moveis'
+            WHEN 165264 THEN 'CM - Dispensa Comunitaria atraves de CM'
+            WHEN 23725 THEN 'Abordagem Familiar'
+            WHEN 23729 THEN 'Fluxo Rapido'
+            WHEN 23724 THEN 'GA - Grupos de Apoio para adesão comunitaria'
+            WHEN 23726 THEN 'CA - Clubes de Adesão'
+            WHEN 165316 THEN 'EH - Extensao de Horario'
+            WHEN 165317 THEN 'TB - Paragem unica no sector da TB'
+            WHEN 165318 THEN 'CT - Paragem unica nos serviços TARV'
+            WHEN 165319 THEN 'SAAJ - Paragem unica no SAAJ'
+            WHEN 165320 THEN 'Paragem unica na SMI'
+            WHEN 165321 THEN 'DAH - Doença Avançada por HIV'
+			ELSE 'OUTRO' END AS modelodf ,
+			 first_mdf.encounter_datetime data_modelo
+			FROM
+
+			(	SELECT  p.patient_id,MIN(encounter_datetime) AS encounter_datetime
+				FROM 	encounter e 
+                          INNER JOIN patient p ON p.patient_id=e.patient_id
+                        INNER JOIN obs o ON o.encounter_id =e.encounter_id
+				       AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id=165174 AND e.encounter_type IN (6,9)  AND e.location_id=:location 
+				GROUP BY e.patient_id
+			) first_mdf
+			INNER JOIN encounter e ON e.patient_id=first_mdf.patient_id
+			INNER JOIN obs o ON o.encounter_id=e.encounter_id		
+			WHERE o.concept_id=165174 AND o.voided=0 and e.voided=0  AND e.encounter_datetime=first_mdf.encounter_datetime AND 
+			e.encounter_type IN (6,9)  AND e.location_id=:location   and  o.value_coded in  
+            (select case :modelo
+            WHEN  'Dispensa Trimestral de ARV'                THEN 23730 
+            WHEN  'Dispensa Semestral de ARV'                 THEN 23888  
+            WHEN  'Dispensa Anual de ARV'                     THEN 165314 
+            WHEN  'Dispensa Descentralizada de ARV'           THEN 165315 
+            WHEN  'Dispensa Comunitaria atraves do Provedor' THEN 165178 
+            WHEN  'Dispensa Comunitaria atraves do APE'      THEN 165179 
+            WHEN  'Dispensa Comunitaria atraves de Brigadas Moveis' THEN 165265 
+            WHEN  'Dispensa Comunitaria atraves de CM'         THEN 165264  
+            WHEN  'Abordagem Familiar'                         THEN 23725  
+            WHEN  'Fluxo Rapido'                               THEN 23729 
+            WHEN  'Grupos de Apoio para adesao comunitaria'    THEN 23724 
+            WHEN  'Clubes de Adesao'                           THEN 23726 
+            WHEN  'Extensao de Horario'                        THEN 165316 
+            WHEN  'Paragem unica no sector da TB'              THEN 165317 
+            WHEN  'Paragem unica nos servicos TARV' 	        THEN 165318 
+            WHEN  'Paragem unica no SAAJ'      		        THEN 165319 
+            WHEN  'Paragem unica na SMI' 				        THEN 165320 
+            WHEN  'Doenca Avancada por HIV' 			        THEN 165321 end  )
+			GROUP BY e.patient_id
           
 		) modelodf ON modelodf.patient_id=inicio_real.patient_id AND modelodf.data_modelo IS NOT NULL AND modelodf.data_modelo between :startDate and :endDate
 		
@@ -375,34 +431,35 @@ FROM
 		) ultima_profilaxia ON ultima_profilaxia.patient_id=modelodf.patient_id 
   /************************** Modelos  o.concept_id in (23724,23725,23726,23727,23729,23730,23731,23732,23888) ****************************/
 		left JOIN 
-		(			SELECT mdl.patient_id,  mdl.modelodf, MAX(mdl.data_modelo) AS data_modelo  FROM (
+		(		
+         SELECT mdl.patient_id,  mdl.modelodf, MAX(mdl.data_modelo) AS data_modelo  FROM (
               SELECT 	e.patient_id,
 				CASE o.concept_id
-					WHEN '23724'  THEN 'GAAC (GA)'
-					WHEN '23725'  THEN 'ABORDAGEM FAMILIAR'
-					WHEN '23726'  THEN 'CLUBES DE ADESAO (CA)'
-					WHEN '23727'  THEN 'PARAGEM UNICA (PU)'  
-                    WHEN '23729'  THEN  'FLUXO RAPIDO (FR)'
-					WHEN '23730'  THEN  'DISPENSA TRIMESTRAL (DT)'
-					WHEN '23731'  THEN 'DISPENSA COMUNITARIA (DC)'
+					WHEN '23724'  THEN 'Grupos de Apoio para adesao comunitaria'
+					WHEN '23725'  THEN 'Abordagem Familiar'
+					WHEN '23726'  THEN 'Clubes de Adesao'
+					WHEN '23727'  THEN 'PARAGEM UNICA'  
+                    WHEN '23729'  THEN  'Fluxo Rapido'
+					WHEN '23730'  THEN  'Dispensa Trimestral de ARV'
+					WHEN '23731'  THEN 'Dispensa Comunitaria'
 					WHEN '23732'  THEN 'OUTRO MODELO'
-                    WHEN '23888'  THEN 'DISPENSA SEMESTRAL'
-                    WHEN '165177' THEN 'FARMAC/Farmácia Privada'
+                    WHEN '23888'  THEN 'Dispensa Semestral de ARV'
+                    WHEN '165177' THEN 'FARMAC/Farmacia Privada'
 				ELSE '' END AS modelodf, 
                  o.value_coded,
 				MAX(encounter_datetime) AS data_modelo
 			FROM 	obs o
 			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
-			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0  AND o.location_id=:location and  o.concept_id in  
+			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND  o.location_id=:location and  o.concept_id in  
             (select case :modelo
-                       when 'GAAC'  then 23724
-                       when 'ABORDAGEM FAMILIAR' then 23725 
-                       when 'CLUBES DE ADESAO' then 23726 
+                       when 'Grupos de Apoio para adesao comunitaria'  then 23724
+                       when 'Abordagem Familiar' then 23725 
+                       when 'Clubes de Adesao' then 23726 
                        when 'PARAGEM UNICA' then 23727 
-                       when 'FLUXO RAPIDO' then 23729
-                       when 'DISPENSA TRIMESTRAL' then 23730
-                       when 'DISPENSA COMUNITARIA' then 23731
-                       when 'DISPENSA SEMESTRAL' then  23888
+                       when 'Fluxo Rapido' then 23729
+                       when 'Dispensa Trimestral de ARV' then 23730
+                       when 'Dispensa Comunitaria' then 23731
+                       when 'Dispensa Semestral de ARV' then  23888
                        when 'Farmacia Privada' then 165177 end  )
             GROUP BY patient_id
           
@@ -412,14 +469,72 @@ FROM
              			
               SELECT 	e.patient_id,
 				CASE o.value_coded
-                    WHEN '23888' THEN 'DISPENSA SEMESTRAL'
+                    WHEN '23888' THEN 'Dispensa Semestral de ARV'
 				ELSE '' END AS modelodf, 
                  o.value_coded,
 				MAX(encounter_datetime) AS data_modelo
 			FROM 	obs o
 			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
-			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id =23739 AND o.value_coded= ( select case :modelo when 'DISPENSA TRIMESTRAL (DT)' then 23888 else 1111 end  )  AND o.location_id=:location
+			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id =23739 AND o.value_coded= ( select case :modelo when 'Dispensa Semestral de ARV' then 23888 else 1111 end  )  AND o.location_id=:location
             GROUP BY patient_id ) mdl  GROUP BY patient_id
+
+			UNION ALL
+	-- 
+		SELECT first_mdf.patient_id,
+        CASE o.value_coded
+			WHEN 23730 THEN 'Dispensa Trimestral de ARV'
+            WHEN 23888 THEN 'Dispensa Semestral de ARV'
+            WHEN 165314 THEN 'Dispensa Anual de ARV'
+            WHEN 165315 THEN 'Dispensa Descentralizada de ARV'
+            WHEN 165178 THEN 'DCP - Dispensa Comunitaria atraves do Provedor'
+            WHEN 165179 THEN 'DCA - Dispensa Comunitaria atraves do APE'
+            WHEN 165265 THEN 'BM - Dispensa Comunitaria atraves de Brigadas Moveis'
+            WHEN 165264 THEN 'CM - Dispensa Comunitaria atraves de CM'
+            WHEN 23725 THEN 'Abordagem Familiar'
+            WHEN 23729 THEN 'Fluxo Rapido'
+            WHEN 23724 THEN 'GA - Grupos de Apoio para adesão comunitaria'
+            WHEN 23726 THEN 'CA - Clubes de Adesão'
+            WHEN 165316 THEN 'EH - Extensao de Horario'
+            WHEN 165317 THEN 'TB - Paragem unica no sector da TB'
+            WHEN 165318 THEN 'CT - Paragem unica nos serviços TARV'
+            WHEN 165319 THEN 'SAAJ - Paragem unica no SAAJ'
+            WHEN 165320 THEN 'Paragem unica na SMI'
+            WHEN 165321 THEN 'DAH - Doença Avançada por HIV'
+			ELSE 'OUTRO' END AS modelodf ,
+			 first_mdf.encounter_datetime data_modelo
+			FROM
+
+			(	SELECT  p.patient_id,MAX(encounter_datetime) AS encounter_datetime
+				FROM 	encounter e 
+                          INNER JOIN patient p ON p.patient_id=e.patient_id
+                        INNER JOIN obs o ON o.encounter_id =e.encounter_id
+				       AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id=165174 AND e.encounter_type IN (6,9)  AND e.location_id=:location 
+				GROUP BY e.patient_id
+			) first_mdf
+			INNER JOIN encounter e ON e.patient_id=first_mdf.patient_id
+			INNER JOIN obs o ON o.encounter_id=e.encounter_id		
+			WHERE o.concept_id=165174 AND o.voided=0 and e.voided=0  AND e.encounter_datetime=first_mdf.encounter_datetime AND 
+			e.encounter_type IN (6,9)  AND e.location_id=:location   and  o.value_coded in  
+            (select case :modelo
+            WHEN  'Dispensa Trimestral de ARV'                THEN 23730 
+            WHEN  'Dispensa Semestral de ARV'                 THEN 23888  
+            WHEN  'Dispensa Anual de ARV'                     THEN 165314 
+            WHEN  'Dispensa Descentralizada de ARV'           THEN 165315 
+            WHEN  'Dispensa Comunitaria atraves do Provedor' THEN 165178 
+            WHEN  'Dispensa Comunitaria atraves do APE'      THEN 165179 
+            WHEN  'Dispensa Comunitaria atraves de Brigadas Moveis' THEN 165265 
+            WHEN  'Dispensa Comunitaria atraves de CM'         THEN 165264  
+            WHEN  'Abordagem Familiar'                         THEN 23725  
+            WHEN  'Fluxo Rapido'                               THEN 23729 
+            WHEN  'Grupos de Apoio para adesao comunitaria'    THEN 23724 
+            WHEN  'Clubes de Adesao'                           THEN 23726 
+            WHEN  'Extensao de Horario'                        THEN 165316 
+            WHEN  'Paragem unica no sector da TB'              THEN 165317 
+            WHEN  'Paragem unica nos servicos TARV' 	        THEN 165318 
+            WHEN  'Paragem unica no SAAJ'      		        THEN 165319 
+            WHEN  'Paragem unica na SMI' 				        THEN 165320 
+            WHEN  'Doenca Avancada por HIV' 			        THEN 165321 end  )
+			GROUP BY e.patient_id
           
 		) modelodf_ultimo ON modelodf_ultimo.patient_id=inicio_real.patient_id AND modelodf_ultimo.data_modelo IS NOT NULL AND modelodf.data_modelo <= :endDate
 		
