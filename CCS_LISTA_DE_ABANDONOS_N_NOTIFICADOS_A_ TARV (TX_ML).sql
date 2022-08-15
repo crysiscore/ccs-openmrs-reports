@@ -13,9 +13,20 @@ Change Date: 14/06/2021
 Change Reason: Bug fix 
               - A Sub-consulta do ultimo_seguimento buscava  uma data incorrecta  
 			  - 
-               
+Change Date: 08/08/2022 
+Change Reason: Bug fix 
+              -  Correcao no criterio de exclusao ( Pacientes transferidos da FC e cartao de visita).
+			  -  Revisao da sub-consulta que verifica a saida no programa TARV-Tratamento (Visao geral OpenMRS)
+              -
+USE openmrs;
+    SET :startDate:='2022-03-21';
+    SET :endDate:='2022-06-20';
+    SET :location:=208;
 
 */
+
+
+
 SELECT *
 FROM
 (	SELECT 	inicio_real.patient_id,
@@ -31,8 +42,8 @@ FROM
                 pat.value as telefone,
 				ROUND(DATEDIFF(:endDate,p.birthdate)/365) idade_actual,
 				DATE_FORMAT(saida.encounter_datetime,'%d/%m/%Y') as data_saida,
-				IF(saida.estado IS NOT NULL,saida.estado,IF(DATEDIFF(:endDate ,ultimo_seguimento.value_datetime)>28,'ABANDONO NAO NOTIFICADO',IF(DATEDIFF(:endDate ,ultimo_seguimento.value_datetime)>3,'FALTOSO',''))) AS tipo_saida,
-				-- visita.encounter_datetime as ultimo_levantamento,
+				IF(saida.estado IS NOT NULL,saida.estado,IF(DATEDIFF(:endDate ,ultimo_seguimento.value_datetime)>=28,'ABANDONO NAO NOTIFICADO',IF(DATEDIFF(:endDate ,ultimo_seguimento.value_datetime)<28,'FALTOSO',''))) AS tipo_saida,
+				--  visita.encounter_datetime as ultimo_levantamento,
 				-- visita.value_datetime as proximo_marcado,
                  DATE_FORMAT(ultimo_seguimento.encounter_datetime,'%d/%m/%Y') as  ultimo_seg,
                  DATE_FORMAT(ultimo_seguimento.value_datetime,'%d/%m/%Y') as  prox_marcad,
@@ -208,7 +219,7 @@ WHERE data_inicio <=:endDate
              /***************************   Ultimo seguimento no periodo de analise ******************************* */
              LEFT JOIN 
              (        
-				SELECT patient_id,MAX(encounter_datetime) encounter_datetime, MAX(value_datetime) AS value_datetime --
+				SELECT patient_id,MAX(encounter_datetime) encounter_datetime, MAX(value_datetime) AS value_datetime
 				FROM
 				(
 					SELECT ultimofila.patient_id,ultimofila.encounter_datetime,o.value_datetime  -- , 'Fila' as 'source' 
@@ -340,7 +351,7 @@ WHERE data_inicio <=:endDate
 			) pid ON pid.patient_id=inicio_real.patient_id			
 			LEFT JOIN
 			(		
-				SELECT 	pg.patient_id,max(ps.start_date) encounter_datetime,
+				/* SELECT 	pg.patient_id,max(ps.start_date) encounter_datetime,
                 						CASE ps.state
 							WHEN 7 THEN 'TRANSFERIDO PARA'
 							WHEN 8 THEN 'SUSPENSO'
@@ -351,8 +362,31 @@ WHERE data_inicio <=:endDate
 						INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
 						INNER JOIN patient_state ps ON pg.patient_program_id=ps.patient_program_id
 				WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND 
-						pg.program_id=2 AND ps.state IN (7,8,9,10) AND ps.end_date IS NULL AND location_id=:location AND ps.start_date<= :endDate 
-			         group by pg.patient_id 
+						pg.program_id=2 AND ps.state IN (7,8,9,10)  AND location_id=:location AND ps.start_date<= :endDate 
+			         group by pg.patient_id
+			         */
+			         -- --------------------------------------------------------
+			    SELECT 	pg.patient_id,ultimo_estado.data_ult_estado AS encounter_datetime,
+			            CASE ps.state
+							WHEN 7 THEN 'TRANSFERIDO PARA'
+							WHEN 8 THEN 'SUSPENSO'
+							WHEN 9 THEN 'ABANDONO'
+							WHEN 10 THEN 'OBITO'
+						ELSE 'OUTRO' END AS estado
+			FROM 	patient p
+					INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
+					INNER JOIN patient_state ps ON pg.patient_program_id=ps.patient_program_id
+					INNER JOIN (SELECT 	pg.patient_id	, MAX(ps.start_date) AS data_ult_estado
+							FROM 	patient p
+									INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
+									INNER JOIN patient_state ps ON pg.patient_program_id=ps.patient_program_id
+							WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND
+									pg.program_id=2 AND    location_id=:location
+							GROUP BY  pg.patient_id ) ultimo_estado ON ultimo_estado.patient_id = p.patient_id AND ultimo_estado.data_ult_estado = ps.start_date
+
+			WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND
+					pg.program_id=2 AND ps.state IN (7,8,9,10) AND   location_id= :location AND ps.start_date <=:endDate
+					GROUP BY pg.patient_id
 			) saida ON saida.patient_id=inicio_real.patient_id
 	
 			LEFT JOIN ( SELECT homevisit.patient_id,homevisit.encounter_datetime,
@@ -372,14 +406,16 @@ WHERE data_inicio <=:endDate
 					 FROM 	(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime
 						FROM 	encounter e 
 								INNER JOIN obs o  ON o.encounter_id=e.encounter_id 		
-						WHERE 	e.voided=0 AND o.voided=0 AND e.encounter_type=21 AND o.concept_id =2016 AND e.location_id=:location AND 
+						WHERE 	e.voided=0 AND o.voided=0 AND e.encounter_type=21  AND e.location_id=:location AND
 								e.encounter_datetime<=:endDate 
 						GROUP BY e.patient_id
 					) homevisit
 					INNER JOIN encounter e ON e.patient_id=homevisit.patient_id
-					INNER JOIN obs o ON o.encounter_id=e.encounter_id			
-					WHERE o.concept_id =2016  AND o.value_coded IN (1706,23863) AND o.voided=0 AND e.encounter_datetime=homevisit.encounter_datetime AND 
-					e.encounter_type =21 AND e.location_id=:location 
+					INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					 INNER JOIN patient p on p.patient_id=e.patient_id
+					WHERE o.concept_id =2016  AND o.value_coded IN (1706,23863) AND o.voided=0 AND e.voided=0  AND p.voided=0 AND e.encounter_datetime=homevisit.encounter_datetime AND
+					e.encounter_type =21 AND e.location_id=:location
+					GROUP BY e.patient_id
 				
 			) transfered_out_homevisit ON transfered_out_homevisit.patient_id=inicio_real.patient_id
 
@@ -391,14 +427,15 @@ WHERE data_inicio <=:endDate
 							FROM	(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime
 						FROM 	encounter e 
 								INNER JOIN obs o  ON o.encounter_id=e.encounter_id 		
-						WHERE  o.concept_id  IN (6272,6273) and	e.voided=0 AND o.voided=0 AND e.encounter_type IN (6,9,53) AND e.location_id=:location AND 
+						WHERE 	e.voided=0 AND o.voided=0 AND e.encounter_type IN (6,9) AND e.location_id=:location AND
 								e.encounter_datetime<=:endDate 
 						GROUP BY e.patient_id
 					) master_card
 					INNER JOIN encounter e ON e.patient_id=master_card.patient_id
-					INNER JOIN obs o ON o.encounter_id=e.encounter_id			
-					WHERE o.concept_id  IN (6272,6273)  AND o.value_coded = 1706 AND o.voided=0 AND e.encounter_datetime=master_card.encounter_datetime AND 
-					e.encounter_type IN (6,9,53) AND e.location_id=:location 
+					INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					INNER JOIN patient p on p.patient_id=e.patient_id
+					WHERE o.concept_id  IN (6273)  AND o.value_coded in (1366, 1706) AND o.voided=0 AND p.voided=0 AND e.voided=0 AND e.encounter_datetime=master_card.encounter_datetime AND
+					e.encounter_type IN (6,9) AND e.location_id=:location 
 				    GROUP BY e.patient_id
 
 			) transfered_out_ficha_clinica ON transfered_out_ficha_clinica.patient_id=inicio_real.patient_id
@@ -410,29 +447,91 @@ WHERE data_inicio <=:endDate
 			) programa ON programa.patient_id=inicio_real.patient_id
 	
 	)inicios
-WHERE patient_id NOT IN  
-	
-		(	
+
 		-- The system will exclude the following patients: (OpenMRS TX_ML Indicator Specification and Requirements_v2.7.4 )
 		-- ALL Patients who were transferred-OUT (defined BY criteria ON TX_ML_FR6) BY END of previous reporting period AND
 		-- ALL Patient who are dead (defined BY criteria ON TX_ML_FR4) BY END of previous reporting period.
+WHERE patient_id NOT IN  
 	
-			SELECT 	pg.patient_id					
-			FROM 	patient p 
+		(	
+
+            -- Pacientes que sairam do programa TARV-TRATAMENTO ( Panel do Paciente)
+			SELECT 	pg.patient_id
+			FROM 	patient p
 					INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
 					INNER JOIN patient_state ps ON pg.patient_program_id=ps.patient_program_id
-			WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND 
-					pg.program_id=2 AND ps.state IN (7,8,9,10) AND 
-					ps.end_date IS NULL AND location_id= :location AND ps.start_date<= DATE_SUB(:startDate , INTERVAL 1 DAY) 	
+					INNER JOIN (SELECT 	pg.patient_id	, MAX(ps.start_date) AS data_ult_estado
+							FROM 	patient p
+									INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
+									INNER JOIN patient_state ps ON pg.patient_program_id=ps.patient_program_id
+							WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND
+									pg.program_id=2 AND    location_id=:location
+							GROUP BY  pg.patient_id ) ultimo_estado ON ultimo_estado.patient_id = p.patient_id AND ultimo_estado.data_ult_estado = ps.start_date
+
+			WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND
+					pg.program_id=2 AND ps.state IN (7,8,9,10) AND   location_id= :location AND ps.start_date <=:endDate
+					GROUP BY pg.patient_id
+		    UNION ALL
+           -- Pacientes que sairam do programa TARV-TRATAMENTO (Home Card Visit)
+           SELECT  patient_id FROM (
+            SELECT homevisit.patient_id,homevisit.encounter_datetime,
+					 CASE o.value_coded
+					 WHEN 2005  THEN   'Esqueceu a Data'
+					 WHEN 2006  THEN   'Esta doente'
+					 WHEN 2007  THEN   'Problema de transporte'
+					 WHEN 2010  THEN   'Mau atendimento na US'
+					 WHEN 23915 THEN   'Medo do provedor de saude na US'
+					 WHEN 23946 THEN   'Ausencia do provedor na US'
+					 WHEN 2015  THEN   'Efeitos Secundarios'
+					 WHEN 2013  THEN   'Tratamento Tradicional'
+					 WHEN 1706  THEN   'Transferido para outra US'
+					 WHEN 23863 THEN   'AUTO Transferencia'
+					 WHEN 2017  THEN   'OUTRO'
+					 END AS motivo_saida
+					 FROM 	(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime
+						FROM 	encounter e
+								INNER JOIN obs o  ON o.encounter_id=e.encounter_id
+						WHERE 	e.voided=0 AND o.voided=0 AND e.encounter_type=21  AND e.location_id=:location AND
+								e.encounter_datetime<=:endDate
+						GROUP BY e.patient_id
+					) homevisit
+					INNER JOIN encounter e ON e.patient_id=homevisit.patient_id
+					INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					INNER JOIN patient p on p.patient_id=e.patient_id
+					WHERE o.concept_id =2016  AND o.value_coded IN (1706,23863) AND o.voided=0 AND p.voided =0 AND e.voided=0 AND e.encounter_datetime=homevisit.encounter_datetime AND
+					e.encounter_type =21 AND e.location_id=:location
+
+
+             UNION ALL
+              -- Pacientes que sairam do programa TARV-TRATAMENTO ( Ficha Mestra)
+             SELECT master_card.patient_id,master_card.encounter_datetime,
+					 CASE o.value_coded
+					 WHEN 1706 THEN 'Transferido para outra US'
+					 WHEN 1366 THEN 'Obito'
+					 END AS motivo_saida
+					 FROM	(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime
+						FROM 	encounter e
+								INNER JOIN obs o  ON o.encounter_id=e.encounter_id
+						WHERE  e.voided=0 AND o.voided=0 AND e.encounter_type IN (6,9) AND e.location_id=:location AND
+								e.encounter_datetime<=:endDate
+						GROUP BY e.patient_id
+					) master_card
+					INNER JOIN encounter e ON e.patient_id=master_card.patient_id
+					INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					INNER JOIN patient p on p.patient_id=e.patient_id
+					WHERE o.concept_id  =6273  AND o.value_coded in (1366, 1706) AND o.voided=0 AND p.voided =0  AND e.voided=0 AND e.encounter_datetime=master_card.encounter_datetime AND
+					e.encounter_type IN (6,9) AND e.location_id=:location
+				    GROUP BY e.patient_id ) transfered_out
 
 				
-		)  AND   ( data_transfered_out IS NULL OR data_transfered_out BETWEEN prox_marcad AND :endDate ) 
-           AND  ( data_motivo_saida IS NULL OR data_motivo_saida BETWEEN prox_marcad AND :endDate ) AND
+		)   AND
 		-- (OpenMRS TX_ML Indicator Specification and Requirements_v2.7.4)
 		-- 3. All patients with the most recent date between the (1) last scheduled drug pick up date (Fila)
 		-- and the (2) last scheduled consultation date (Ficha Seguimento or Ficha Clinica) 
 		-- and (3) 30 days after the last ART pickup date (Recepção – Levantou ARV), 
 		-- adding 28 days and this date is less than the reporting end Date and greater or equal than start date minus 1 day.
-        DATE(limite_txml)   between DATE_SUB(:startDate , INTERVAL 1 DAY) AND   :endDate 
+        DATE(limite_txml)   between DATE_SUB(:startDate , INTERVAL 1 DAY)  AND   :endDate
+      -- AND data_transfered_out IS NULL AND data_motivo_saida IS  NULL
+       
 			
 GROUP BY patient_id

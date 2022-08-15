@@ -24,7 +24,29 @@ Change by@ Agnaldo  Samuel
 Change Reason@ Change request
 -- Adicao da variavel profilaxia ctz ( Mauricio T.)
 
+Change Date@ 13/05/2022 
+Change by@ Agnaldo  Samuel
+Change Reason@ Change request
+-- remover condicao endDate <= null nas CV (Marcia Jasse)
+
+Change Date@ 28/07/2022 
+Change by@ Agnaldo  Samuel
+Change Reason: Bug fix
+-- data gravida busca data de rastreio (Marcia Jasse)
+
+Change Date: 08/08/2022
+Change Reason: Bug fix
+              -  Correcao no criterio de exclusao ( Pacientes transferidos da FC e cartao de visita).
+			  -  Revisao da sub-consulta que verifica a saida no programa TARV-Tratamento (Visao geral OpenMRS)
+              -
+
+USE openmrs;
+SET :startDate:='2022-03-21';
+SET :endDate:='2022-08-08';
+SET :location:=208;
+
 */
+
 
 SELECT * 
 FROM 
@@ -498,7 +520,7 @@ SELECT 	e.patient_id,
             GROUP BY patient_id
 		) linha_terapeutica ON linha_terapeutica.patient_id=inicio_real.patient_id
         
-        /****************** ****************************  CD4   ********* *****************************************************/
+        /****************** ****************************  CD4    *****************************************************/
         LEFT JOIN(  
             SELECT e.patient_id, o.value_numeric,e.encounter_datetime
             FROM encounter e INNER JOIN 
@@ -634,7 +656,7 @@ SELECT 	e.patient_id,
                  LEFT JOIN form fr ON fr.form_id = e.form_id
                  WHERE e.encounter_datetime=ult_cv.data_cv	
 				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,53) AND
-				o.voided=0 AND 	o.concept_id IN( 856, 1305) AND  e.encounter_datetime <= :endDate 
+				o.voided=0 AND 	o.concept_id IN( 856, 1305) /* AND  e.encounter_datetime <= :endDate */
                 GROUP BY e.patient_id
 		) cv ON cv.patient_id =  inicio_real.patient_id
 
@@ -854,9 +876,9 @@ GROUP BY visita2.patient_id
 	 LEFT JOIN 
 		(SELECT ultimavisita_revelacao.patient_id,ultimavisita_revelacao.encounter_datetime,
         CASE o.value_coded  
-        WHEN 6338 THEN "REVELADO PARCIALMENTE"
-        WHEN 6337 THEN "REVELADO"
-        WHEN 6339 THEN "NÃO REVELADO" END AS estado
+        WHEN 6338 THEN 'REVELADO PARCIALMENTE'
+        WHEN 6337 THEN 'REVELADO'
+        WHEN 6339 THEN 'NÃO REVELADO' END AS estado
 			FROM
 
 			(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime, e.encounter_type
@@ -922,8 +944,9 @@ GROUP BY visita2.patient_id
                     ) conset ON conset.patient_id = inicio_real.patient_id
                     
                     
-	WHERE inicio_real.patient_id NOT IN  -- Pacientes que sairam do programa TARV
-		(		
+	WHERE inicio_real.patient_id NOT IN
+		(
+			-- Pacientes que sairam do programa TARV-TRATAMENTO ( Panel do Paciente)
 			SELECT 	pg.patient_id		
 			FROM 	patient p 
 					INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
@@ -937,8 +960,59 @@ GROUP BY visita2.patient_id
 							GROUP BY  pg.patient_id ) ultimo_estado ON ultimo_estado.patient_id = p.patient_id AND ultimo_estado.data_ult_estado = ps.start_date
                                        
 			WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND 
-					pg.program_id=2 AND ps.state IN (7,8,9,10) AND   location_id=208 AND ps.start_date <=:endDate
-					GROUP BY pg.patient_id	 	
+					pg.program_id=2 AND ps.state IN (7,8,9,10) AND   location_id= :location AND ps.start_date <=:endDate
+					GROUP BY pg.patient_id
+		    UNION ALL
+           -- Pacientes que sairam do programa TARV-TRATAMENTO ( Ficha Mestra/Home Card Visit)
+           SELECT  patient_id FROM (
+            SELECT homevisit.patient_id,homevisit.encounter_datetime,
+					 CASE o.value_coded
+					 WHEN 2005  THEN   'Esqueceu a Data'
+					 WHEN 2006  THEN   'Esta doente'
+					 WHEN 2007  THEN   'Problema de transporte'
+					 WHEN 2010  THEN   'Mau atendimento na US'
+					 WHEN 23915 THEN   'Medo do provedor de saude na US'
+					 WHEN 23946 THEN   'Ausencia do provedor na US'
+					 WHEN 2015  THEN   'Efeitos Secundarios'
+					 WHEN 2013  THEN   'Tratamento Tradicional'
+					 WHEN 1706  THEN   'Transferido para outra US'
+					 WHEN 23863 THEN   'AUTO Transferencia'
+					 WHEN 2017  THEN   'OUTRO'
+					 END AS motivo_saida
+					 FROM 	(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime
+						FROM 	encounter e
+								INNER JOIN obs o  ON o.encounter_id=e.encounter_id
+						WHERE 	e.voided=0 AND o.voided=0 AND e.encounter_type=21  AND e.location_id=:location AND
+								e.encounter_datetime<=:endDate
+						GROUP BY e.patient_id
+					) homevisit
+					INNER JOIN encounter e ON e.patient_id=homevisit.patient_id
+					INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					INNER JOIN patient p on p.patient_id=e.patient_id
+					WHERE o.concept_id =2016  AND o.value_coded IN (1706,23863) AND o.voided=0 AND p.voided =0 AND e.voided=0 AND e.encounter_datetime=homevisit.encounter_datetime AND
+					e.encounter_type =21 AND e.location_id=:location
+
+
+             UNION ALL
+             SELECT master_card.patient_id,master_card.encounter_datetime,
+					 CASE o.value_coded
+					 WHEN 1706 THEN 'Transferido para outra US'
+					 WHEN 1366 THEN 'Obito'
+					 END AS motivo_saida
+					 FROM	(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime
+						FROM 	encounter e
+								INNER JOIN obs o  ON o.encounter_id=e.encounter_id
+						WHERE  e.voided=0 AND o.voided=0 AND e.encounter_type IN (6,9) AND e.location_id=:location AND
+								e.encounter_datetime<=:endDate
+						GROUP BY e.patient_id
+					) master_card
+					INNER JOIN encounter e ON e.patient_id=master_card.patient_id
+					INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					INNER JOIN patient p on p.patient_id=e.patient_id
+					WHERE o.concept_id  =6273  AND o.value_coded in (1366, 1706) AND o.voided=0 AND p.voided =0  AND e.voided=0 AND e.encounter_datetime=master_card.encounter_datetime AND
+					e.encounter_type IN (6,9) AND e.location_id=:location
+				    GROUP BY e.patient_id ) transfered_out
+
 		) AND DATEDIFF(:endDate,visita.value_datetime)<= 28 -- De 33 para 28 Solicitacao do Mauricio 27/07/2020
 ) activos
 GROUP BY patient_id
