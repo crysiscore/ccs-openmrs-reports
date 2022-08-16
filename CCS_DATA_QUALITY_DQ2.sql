@@ -1,4 +1,11 @@
 /*
+Name: CCS DATA QUALITY REPORT RDQ2
+Created by: Agnaldo Samuel <agnaldosamuel@ccsaude.org.mz>
+creation date: 16/08/2022
+    Description:
+         - Pacientes activos pela Ficha Clinica/Fila mas com uma  saida registada no
+           estado de permanecia TARV ( Painel do Paciente/Ficha Clinica)
+
     USE openmrs;
     SET :startDate:='2015-01-21';
     SET :endDate:='2022-08-08';

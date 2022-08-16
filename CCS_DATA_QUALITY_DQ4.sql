@@ -4,13 +4,12 @@ Name: CCS DATA QUALITY REPORT RDQ1
 Created by: Agnaldo Samuel <agnaldosamuel@ccsaude.org.mz>
 creation date: 16/08/2022
 Description-
-              - Pacientes actualmente em tarv, cPacientes que iniciaram TB a mais de 6 meses sem desfecho
+              - Pacientes actualmente em tarv, Pacientes que iniciaram PTV/ETV a mais de 6 meses sem desfecho
 USE openmrs;
 SET @startDate:='2022-03-21';
 SET :endDate:='2022-08-08';
 SET :location:=208;
 */
-
 
 SELECT *
 FROM
@@ -19,19 +18,17 @@ FROM
      CONCAT(pid.identifier,' ')                                                                                                AS NID,
      CONCAT(IFNULL(pn.given_name,''),' ',IFNULL(pn.middle_name,''),' ',IFNULL(pn.family_name,''))                              AS 'NomeCompleto',
      p.gender,
-     DATE_FORMAT(p.birthdate,'%d/%m/%Y')                                                                                       AS birthdate ,
-     ROUND(DATEDIFF(:endDate,p.birthdate)/365)                                                                                    idade_actual,
-     DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y')                                                                           AS data_inicio,
-     marcado_tb_fc.tratamento_tb                                                                                               AS estado_tb_fc,
-     DATE_FORMAT(  marcado_tb_fc.data_marcado_tb , '%d/%m/%Y')                                                                 AS data_inicio_tb_fc,
-     DATE_FORMAT(ultimoFila.value_datetime,'%d/%m/%Y')                                                                         AS proximo_marcado,
-     DATE_FORMAT(ult_seguimento.encounter_datetime ,'%d/%m/%Y')                                                                AS data_ult_visita_2,
-     DATE_FORMAT(ult_seguimento.value_datetime,'%d/%m/%Y')                                                                     AS data_proxima_visita,
-     IF(DATEDIFF(:endDate,visita.value_datetime)<=28,'ACTIVO EM TARV','ABANDONO NAO NOTIFICADO')                                  estado,
-     inicio_tb_panel_paciente.nome_programa,
-     if(inicio_tb_panel_paciente.program_state='ACTIVO PRE-TARV','ACTIVO NO PROGRAMA',inicio_tb_panel_paciente.program_state ) AS program_state,
-     DATE_FORMAT(inicio_tb_panel_paciente.start_date,'%d/%m/%Y') as start_date ,
-     inicio_tb_panel_paciente.duracao_prog
+     DATE_FORMAT(p.birthdate,'%d/%m/%Y')                        AS                               birthdate ,
+     ROUND(DATEDIFF(:endDate,p.birthdate)/365)                                                   idade_actual,
+     DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y')            AS                               data_inicio,
+     DATE_FORMAT(ultimoFila.value_datetime,'%d/%m/%Y')          AS                               proximo_marcado,
+     DATE_FORMAT(ult_seguimento.encounter_datetime ,'%d/%m/%Y') AS                               data_ult_visita_2,
+     DATE_FORMAT(ult_seguimento.value_datetime,'%d/%m/%Y')      AS                               data_proxima_visita,
+     DATE_FORMAT(gravida_real.data_gravida,'%d/%m/%Y') AS data_gravida_fc,
+     inicio_etv_ptv_panel_paciente.nome_programa,
+     inicio_etv_ptv_panel_paciente.program_state,
+      DATE_FORMAT(inicio_etv_ptv_panel_paciente.start_date,'%d/%m/%Y') AS start_date,
+     inicio_etv_ptv_panel_paciente.duracao_prog
 
         FROM
         (	SELECT patient_id,MIN(data_inicio) data_inicio
@@ -138,7 +135,7 @@ FROM
 
 		) visita ON visita.patient_id=inicio_real.patient_id
 
- 	   -- PATIENT PROGRAM ENROLLMENT : TUBERCULOSES
+ 	   -- PATIENT PROGRAM ENROLLMENT : PTV/ETV Programa de representa o estado de gravidez de uma mulher
         INNER JOIN (
 			SELECT 	pg.patient_id ,pg.program_id , pgr.name as nome_programa ,/*pg. patient_program_id,*/ ps.start_date,
 			        /*ps.state,pws.concept_id, pws.initial, pws.terminal,*/ c.name as program_state,
@@ -151,7 +148,7 @@ FROM
 									INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
 									INNER JOIN patient_state ps ON pg.patient_program_id=ps.patient_program_id
 							WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND
-									pg.program_id=5 AND    location_id=:location
+									pg.program_id=8 AND    location_id=:location
 							GROUP BY  pg.patient_id ) ultimo_estado ON ultimo_estado.patient_id = p.patient_id AND ultimo_estado.data_ult_estado = ps.start_date
                      LEFT JOIN program_workflow_state pws on ps.state = pws.program_workflow_state_id
 			    LEFT JOIN
@@ -162,11 +159,9 @@ FROM
                     ) c on c.concept_id = pws.concept_id
 			       LEFT JOIN  program pgr on pgr.program_id = pg.program_id
 			WHERE 	pg.voided=0 AND ps.voided=0 AND p.voided=0 AND
-					pg.program_id=5  AND pws.concept_id IN (6269,1369) AND location_id= :location
+					pg.program_id=8  AND pws.concept_id IN (1982) AND location_id= :location
 					-- GROUP BY pg.patient_id
-
-
-        )  inicio_tb_panel_paciente  on inicio_tb_panel_paciente.patient_id = inicio_real.patient_id
+        )  inicio_etv_ptv_panel_paciente  on inicio_etv_ptv_panel_paciente.patient_id = inicio_real.patient_id
 
 		LEFT JOIN
 		(SELECT ultimavisita.patient_id,ultimavisita.encounter_datetime,o.value_datetime,e.location_id
@@ -198,27 +193,23 @@ LEFT JOIN (
 			e.encounter_type IN (9,6) AND e.location_id=:location
             ) ult_seguimento ON ult_seguimento.patient_id = inicio_real.patient_id
 
-        /************************** ULTIMO INICIO TRATAMENTO DE TUBERCULOSE NA FICHA CLINICA  ****************************/
-        left join
-		( Select ultimavisita_tb.patient_id, ultimavisita_tb.encounter_datetime data_marcado_tb,
-        CASE o.value_coded
-					WHEN '1256'  THEN 'INICIO'
-					WHEN '1257' THEN 'CONTINUA'
-				    WHEN '1267' THEN 'COMPLETO'
-				ELSE 'OUTRO' END AS tratamento_tb
-			from
+        /************************** ULTIMO MARCADO GRAVIDA  NA FICHA CLINICA  ****************************/
+       /*****************************   gravida nos ultimos 12 meses   *************************************************/
+   LEFT JOIN
+	(	SELECT patient_id, data_gravida
+		FROM
+			( SELECT p.patient_id,MAX(obs_datetime) data_gravida
+			FROM 	patient p
+					INNER JOIN encounter e ON p.patient_id=e.patient_id
+					INNER JOIN obs o ON e.encounter_id=o.encounter_id
+			WHERE 	p.voided=0 AND e.voided=0 AND o.voided=0 AND concept_id = 1982 AND value_coded = 1065
+					AND e.encounter_type =6 AND o.obs_datetime BETWEEN DATE_SUB(:endDate, INTERVAL 12 MONTH) AND  :endDate  AND
+					e.location_id=:location
+			GROUP BY p.patient_id
+			) gravida
 
-			(	select 	e.patient_id,max(encounter_datetime) as encounter_datetime
-				from 	encounter e
-                        inner join obs o on o.encounter_id =e.encounter_id
-				       and 	e.voided=0  and o.voided=0   and o.concept_id=1268 and e.encounter_type IN (6,9)  and e.location_id=:location
-				group by e.patient_id
-			) ultimavisita_tb
-			inner join encounter e on e.patient_id=ultimavisita_tb.patient_id
-			inner join obs o on o.encounter_id=e.encounter_id
-          where o.concept_id=1268 and o.voided=0 and e.encounter_datetime=ultimavisita_tb.encounter_datetime and
-			e.encounter_type in (6,9)and o.value_coded in (1256,1257,1267)and e.location_id=:location
-		) marcado_tb_fc on marcado_tb_fc.patient_id =   inicio_real.patient_id
+	) gravida_real ON gravida_real.patient_id=inicio_real.patient_id
+
 
 	WHERE inicio_real.patient_id NOT IN
 		(
@@ -290,6 +281,6 @@ LEFT JOIN (
 				    GROUP BY e.patient_id ) transfered_out
 
 		) AND DATEDIFF(:endDate,visita.value_datetime)<= 28 -- De 33 para 28 Solicitacao do Mauricio 27/07/2020
-         AND duracao_prog > 6
+         AND duracao_prog > 9
 ) activos
 GROUP BY patient_id

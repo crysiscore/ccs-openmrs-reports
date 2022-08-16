@@ -1,44 +1,43 @@
 /*
 
-Name CCS ACTUALMENTE EM TARV 33 DIAS
-Description- 
-              - Pacientes actualmente em tarv, com data do proximo seguimento nao superior a data corremte em 28 dias
+NAME:  CCS ACTUALMENTE EM TARV
+Created by: Colaco Cardoso <colaco.nhango@fgh.org.mz>
+creation date: 16/08/2019
+Description:
+        - Pacientes Activos em TARV (Criterio CDC)
 
-Created By@ Colaco C.
-Created Date@ NA
-
-Change by@ Agnaldo  Samuel
-Change Date@ 06/06/2021 
-Change Reason@ Bug fix
+Change by: Agnaldo  Samuel
+Change Date: 06/06/2021
+Change Reason: Bug fix
     -- Peso e altura incorrecta ( Anibal J.) 
     -- Excluir ficha resumo e APPSS na determinacao da ultima visita
     -- Revelacao de diagnostico da ficha clinica ( Mauricio T.)
 
-Change Date@ 18/11/2021 
-Change by@ Agnaldo  Samuel
-Change Reason@ Bug fix
--- Correcao do erro da maior data da proxima consulta entre a consulta clinica e o fila
-
-Change Date@ 13/05/2022 
-Change by@ Agnaldo  Samuel
-Change Reason@ Change request
--- Adicao da variavel profilaxia ctz ( Mauricio T.)
-
-Change Date@ 13/05/2022 
-Change by@ Agnaldo  Samuel
-Change Reason@ Change request
--- remover condicao endDate <= null nas CV (Marcia Jasse)
-
-Change Date@ 28/07/2022 
-Change by@ Agnaldo  Samuel
+Change Date: 18/11/2021
+Change by: Agnaldo  Samuel
 Change Reason: Bug fix
--- data gravida busca data de rastreio (Marcia Jasse)
+    -- Correcao do erro da maior data da proxima consulta entre a consulta clinica e o fila
+
+Change Date: 13/05/2022
+Change by: Agnaldo  Samuel
+Change Reason: Change request
+    -- Adicao da variavel profilaxia ctz ( Mauricio T.)
+
+Change Date: 13/05/2022
+Change by: Agnaldo  Samuel
+Change Reason: Change request
+    -- remover condicao endDate <= null nas CV (Marcia Jasse)
+
+Change Date: 28/07/2022
+Change by: Agnaldo  Samuel
+Change Reason: Bug fix
+    -- data gravida busca data de rastreio (Marcia Jasse)
 
 Change Date: 08/08/2022
 Change Reason: Bug fix
-              -  Correcao no criterio de exclusao ( Pacientes transferidos da FC e cartao de visita).
-			  -  Revisao da sub-consulta que verifica a saida no programa TARV-Tratamento (Visao geral OpenMRS)
-              -
+    -  Correcao no criterio de exclusao ( Pacientes transferidos da FC e cartao de visita).
+	-  Revisao da sub-consulta que verifica a saida no programa TARV-Tratamento (Visao geral OpenMRS)
+
 
 USE openmrs;
 SET :startDate:='2022-03-21';
@@ -114,7 +113,7 @@ FROM
 		FROM
 			(	
 			
-				/*Patients on ART who initiated the ARV DRUGS@ ART Regimen Start Date*/
+				/*Patients on ART who initiated the ARV DRUGS: ART Regimen Start Date*/
 				
 						SELECT 	p.patient_id,MIN(e.encounter_datetime) data_inicio
 						FROM 	patient p 
@@ -127,7 +126,7 @@ FROM
 				
 						UNION
 				
-						/*Patients on ART who have art start date@ ART Start date*/
+						/*Patients on ART who have art start date: ART Start date*/
 						SELECT 	p.patient_id,MIN(value_datetime) data_inicio
 						FROM 	patient p
 								INNER JOIN encounter e ON p.patient_id=e.patient_id
@@ -139,7 +138,7 @@ FROM
 
 						UNION
 
-						/*Patients enrolled in ART Program@ OpenMRS Program*/
+						/*Patients enrolled in ART Program: OpenMRS Program*/
 						SELECT 	pg.patient_id,MIN(date_enrolled) data_inicio
 						FROM 	patient p INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
 						WHERE 	pg.voided=0 AND p.voided=0 AND program_id=2 AND date_enrolled<=:endDate AND location_id=:location
@@ -148,7 +147,7 @@ FROM
 						UNION
 						
 						
-						/*Patients with first drugs pick up date set in Pharmacy@ First ART Start Date*/
+						/*Patients with first drugs pick up date set in Pharmacy: First ART Start Date*/
 						  SELECT 	e.patient_id, MIN(e.encounter_datetime) AS data_inicio 
 						  FROM 		patient p
 									INNER JOIN encounter e ON p.patient_id=e.patient_id
@@ -618,10 +617,10 @@ SELECT 	e.patient_id,
 						AND e.encounter_type IN (6,9,18,35)
 						GROUP BY patient_id ) risco_adesao ON risco_adesao.patient_id =  inicio_real.patient_id AND DATEDIFF(:endDate,risco_adesao.data_ult_risco_adesao)/30 <= 3 
 
-		 /*******************************   Patients enrolled in PTV/ETV Program@ OpenMRS Program ************************************/
+		 /*******************************   Patients enrolled in PTV/ETV Program: OpenMRS Program ************************************/
         LEFT JOIN (
 
-						/*Patients enrolled in PTV/ETV Program@ OpenMRS Program*/
+						/*Patients enrolled in PTV/ETV Program: OpenMRS Program*/
 						SELECT 	pg.patient_id,date_enrolled 
 						FROM 	patient p INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
 						WHERE 	pg.voided=0 AND p.voided=0 AND program_id=8 AND  date_enrolled  BETWEEN DATE_SUB(:endDate , INTERVAL 9 MONTH ) AND :endDate 

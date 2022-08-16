@@ -1,5 +1,8 @@
 /*
 Name: CCS LISTA DE ABANDONOS NÃO NOTIFICADOS AO TARV (TX_ML)
+Created by: Agnaldo Samuel <agnaldosamuel@ccsaude.org.mz>
+creation date: 16/08/2020
+Description-
 Description:
               -  Usando os critérios do indicador TX_ML  (OpenMRS TX_ML Indicator Specification and Requirements_v2.7.4.dox )
               -  https://www.dropbox.com/s/t22b3ggfd071vfq/OpenMRS%20TX_ML%20Indicator%20Specification%20and%20Requirements_v2.7.4.docx?dl=0

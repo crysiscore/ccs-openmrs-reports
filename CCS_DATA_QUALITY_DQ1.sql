@@ -1,4 +1,12 @@
 /*
+
+Name: CCS DATA QUALITY REPORT RDQ1
+Created by: Agnaldo Samuel <agnaldosamuel@ccsaude.org.mz>
+creation date: 16/08/2022
+Description:
+         - Pacientes que sairam do Tratamento TARV  (Obito, Transferido para, Abandono)
+           que tem uma data de proximo levantamento no futuro registada por erro numa das consultas passadas
+
     USE openmrs;
     SET :startDate:='2015-01-21';
     SET :endDate:='2022-08-08';
@@ -91,10 +99,9 @@
                 ) inicio
             GROUP BY patient_id
         ) inicio_real
+         INNER JOIN person p ON p.person_id=inicio_real.patient_id
 
-            INNER JOIN person p ON p.person_id=inicio_real.patient_id
-
-            LEFT JOIN
+         LEFT JOIN
                 (	SELECT pad1.*
                     FROM person_address pad1
                     INNER JOIN
