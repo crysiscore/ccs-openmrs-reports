@@ -1,8 +1,30 @@
+/*
+Name - CCS_LISTA_DE_AVALIACAO_PARA_RETENCAO_EM_MDS
+Description
+              - Avaliacao de retencao num modelo especifico
+
+Created By - Agnaldo Samuel
+Created Date-  23/11/2021
+
+
+Modified By - Agnaldo Samuel
+Modification  Date-  12/01/20212
+Reason@
+Inclusao da variavel estado de permanencia e  tipo de profilaxia TPT
+
+
 USE openmrs;
-SET :startDate :='2020-06-21';
-SET :endDate :='2023-12-20';
-SET :location :=208;
-set :modelo := 'Paragem unica no SAAJ';
+SET startDate='2020-06-21';
+SET endDate='2021-12-20';
+SET location=208;
+set modelo= 'FARMAC/Farmacia Privada';
+*/
+USE openmrs;
+SET @startDate :='2020-06-21';
+SET @endDate :='2023-12-20';
+SET @location :=208;
+set @modelo := 'Paragem unica no SAAJ';
+
 
 SELECT *
 FROM
@@ -10,7 +32,7 @@ FROM
 			CONCAT(pid.identifier,' ') AS NID,
             CONCAT( IFNULL(pn.given_name,''),' ', IFNULL(pn.middle_name,''),' ', IFNULL(pn.family_name,'')) AS 'NomeCompleto',
 			p.gender,
-            ROUND(DATEDIFF(:endDate,p.birthdate)/365) idade_actual,
+            ROUND(DATEDIFF(@endDate,p.birthdate)/365) idade_actual,
             DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') AS data_inicio,
 			DATE_FORMAT(modelodf.data_modelo ,'%d/%m/%Y') AS data_inscricao,
             modelodf.modelodf,
@@ -19,7 +41,7 @@ FROM
             ultima_profilaxia.profilaxia ,
             ultima_profilaxia.origem_prof,
             regime.ultimo_regime,
-            IF(DATEDIFF(:endDate,visita.value_datetime)<=28,'ACTIVO EM TARV','ABANDONO NAO NOTIFICADO') estado,
+            IF(DATEDIFF(@endDate,visita.value_datetime)<=28,'ACTIVO EM TARV','ABANDONO NAO NOTIFICADO') estado,
 			DATE_FORMAT(seguimento.encounter_datetime,'%d/%m/%Y') AS data_ult_consulta,
             DATE_FORMAT(seguimento.value_datetime,'%d/%m/%Y') AS consulta_proximo_marcado,
             DATE_FORMAT(fila.encounter_datetime,'%d/%m/%Y') AS data_ult_levantamento,
@@ -36,14 +58,64 @@ FROM
 
 
 	FROM
+	(	SELECT patient_id,MIN(data_inicio) data_inicio
+		FROM
+			(
 
+				/*Patients on ART who initiated the ARV DRUGS@ ART Regimen Start Date*/
+
+						SELECT 	p.patient_id,MIN(e.encounter_datetime) data_inicio
+						FROM 	patient p
+								INNER JOIN encounter e ON p.patient_id=e.patient_id
+								INNER JOIN obs o ON o.encounter_id=e.encounter_id
+						WHERE 	e.voided=0 AND o.voided=0 AND p.voided=0 AND
+								e.encounter_type IN (18,6,9) AND o.concept_id=1255 AND o.value_coded=1256 AND
+								e.encounter_datetime<=@endDate AND e.location_id=@location
+						GROUP BY p.patient_id
+
+						UNION
+
+						/*Patients on ART who have art start date@ ART Start date*/
+						SELECT 	p.patient_id,MIN(value_datetime) data_inicio
+						FROM 	patient p
+								INNER JOIN encounter e ON p.patient_id=e.patient_id
+								INNER JOIN obs o ON e.encounter_id=o.encounter_id
+						WHERE 	p.voided=0 AND e.voided=0 AND o.voided=0 AND e.encounter_type IN (18,6,9,53) AND
+								o.concept_id=1190 AND o.value_datetime IS NOT NULL AND
+								o.value_datetime<=@endDate AND e.location_id=@location
+						GROUP BY p.patient_id
+
+						UNION
+
+						/*Patients enrolled in ART Program@ OpenMRS Program*/
+						SELECT 	pg.patient_id,MIN(date_enrolled) data_inicio
+						FROM 	patient p INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
+						WHERE 	pg.voided=0 AND p.voided=0 AND program_id=2 AND date_enrolled<=@endDate AND location_id=@location
+						GROUP BY pg.patient_id
+
+						UNION
+
+
+						/*Patients with first drugs pick up date set in Pharmacy@ First ART Start Date*/
+						  SELECT 	e.patient_id, MIN(e.encounter_datetime) AS data_inicio
+						  FROM 		patient p
+									INNER JOIN encounter e ON p.patient_id=e.patient_id
+						  WHERE		p.voided=0 AND e.encounter_type=18 AND e.voided=0 AND e.encounter_datetime<=@endDate AND e.location_id=@location
+						  GROUP BY 	p.patient_id
+
+			) inicio
+		GROUP BY patient_id
+	)inicio_real
+		INNER JOIN person p ON p.person_id=inicio_real.patient_id
+		  /************************** Modelos  o.concept_id in (23724,23725,23726,23727,23729,23730,23731,23732,23888) ****************************/
+		INNER JOIN
 		(	 SELECT mdl.patient_id,  mdl.modelodf, MIN(mdl.data_modelo) AS data_modelo  FROM (
               SELECT 	e.patient_id,
 				CASE o.concept_id
 					WHEN '23724'  THEN 'Grupos de Apoio para adesao comunitaria'
 					WHEN '23725'  THEN 'Abordagem Familiar'
 					WHEN '23726'  THEN 'Clubes de Adesao'
-					WHEN '23727'  THEN 'PARAGEM UNICA'
+					WHEN '23727'  THEN 'Paragem unica'
                     WHEN '23729'  THEN  'Fluxo Rapido'
 					WHEN '23730'  THEN  'Dispensa Trimestral de ARV'
 					WHEN '23731'  THEN 'Dispensa Comunitaria'
@@ -54,20 +126,17 @@ FROM
 				encounter_datetime AS data_modelo
 			FROM 	obs o
 			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
-			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND  o.location_id=:location
-			  and  encounter_datetime between :startDate and :endDate
-			AND encounter_datetime IS NOT NULL AND o.concept_id in
-            (select case :modelo
+			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND  o.location_id=@location and  o.concept_id in
+            (select case @modelo
                        when 'Grupos de Apoio para adesao comunitaria'  then 23724
                        when 'Abordagem Familiar' then 23725
                        when 'Clubes de Adesao' then 23726
-                       when 'PARAGEM UNICA' then 23727
+                       when 'Paragem unica' then 23727
                        when 'Fluxo Rapido' then 23729
                        when 'Dispensa Trimestral de ARV' then 23730
                        when 'Dispensa Comunitaria' then 23731
                        when 'Dispensa Semestral de ARV' then  23888
-                       when 'Farmacia Privada' then 165177 end  )
-
+                       when 'FARMAC/Farmacia Privada' then 165177 end )
 
 
              UNION ALL
@@ -80,12 +149,12 @@ FROM
 				encounter_datetime AS data_modelo
 			FROM 	obs o
 			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
-			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id =23739
-			   and  encounter_datetime between :startDate and :endDate  AND encounter_datetime IS NOT NULL AND o.value_coded= ( select case :modelo when 'Dispensa Semestral de ARV' then 23888 else 1111 end  )  AND o.location_id=:location
+			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id =23739 AND o.value_coded= ( select case @modelo when 'Dispensa Semestral de ARV' then 23888 else 1111 end  )  AND o.location_id=@location
             GROUP BY patient_id
 
 			UNION ALL
-	SELECT first_mdf.patient_id,
+
+		SELECT first_mdf.patient_id,
         CASE o.value_coded
 			WHEN 23730 THEN 'Dispensa Trimestral de ARV'
             WHEN 23888 THEN 'Dispensa Semestral de ARV'
@@ -117,15 +186,14 @@ FROM
 				FROM 	encounter e
                           INNER JOIN patient p ON p.patient_id=e.patient_id
                         INNER JOIN obs o ON o.encounter_id =e.encounter_id
-				       AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id=165174 AND e.encounter_type IN (6,9)  AND e.location_id=:location
-				  and  encounter_datetime between :startDate and :endDate
+				       AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id=165174 AND e.encounter_type IN (6,9)  AND e.location_id=@location
 				GROUP BY e.patient_id
 			) first_mdf
 			INNER JOIN encounter e ON e.patient_id=first_mdf.patient_id
 			INNER JOIN obs o ON o.encounter_id=e.encounter_id
 			WHERE o.concept_id=165174 AND o.voided=0 and e.voided=0  AND e.encounter_datetime=first_mdf.encounter_datetime AND
-			first_mdf.encounter_datetime is not null and e.encounter_type IN (6,9)  AND e.location_id=:location   and  o.value_coded in
-            (select case :modelo
+			e.encounter_type IN (6,9)  AND e.location_id=@location   and  o.value_coded in
+            (select case @modelo
             WHEN  'Dispensa Trimestral de ARV'                THEN 23730
             WHEN  'Dispensa Semestral de ARV'                 THEN 23888
             WHEN  'Dispensa Anual de ARV'                     THEN 165314
@@ -148,64 +216,11 @@ FROM
             WHEN  'FARMAC/Farmacia Privada'                    THEN 165177
             WHEN   'Dispensa Comunitaria'                       THEN 23731
             WHEN   'Outro Modelo'                                THEN 23732
-			end    )
+			end  )
+			) mdl  where data_modelo IS NOT NULL
+			       GROUP BY patient_id
 
-			) mdl  GROUP BY patient_id
-
-
-		) modelodf
-
-		    INNER JOIN person p ON p.person_id=modelodf.patient_id
-
-	left join
-(	SELECT patient_id,MIN(data_inicio) data_inicio
-		FROM
-			(
-
-				/*Patients on ART who initiated the ARV DRUGS: ART Regimen Start Date*/
-
-						SELECT 	p.patient_id,MIN(e.encounter_datetime) data_inicio
-						FROM 	patient p
-								INNER JOIN encounter e ON p.patient_id=e.patient_id
-								INNER JOIN obs o ON o.encounter_id=e.encounter_id
-						WHERE 	e.voided=0 AND o.voided=0 AND p.voided=0 AND
-								e.encounter_type IN (18,6,9) AND o.concept_id=1255 AND o.value_coded=1256 AND
-								e.encounter_datetime<=:endDate AND e.location_id=:location
-						GROUP BY p.patient_id
-
-						UNION
-
-						/*Patients on ART who have art start date: ART Start date*/
-						SELECT 	p.patient_id,MIN(value_datetime) data_inicio
-						FROM 	patient p
-								INNER JOIN encounter e ON p.patient_id=e.patient_id
-								INNER JOIN obs o ON e.encounter_id=o.encounter_id
-						WHERE 	p.voided=0 AND e.voided=0 AND o.voided=0 AND e.encounter_type IN (18,6,9,53) AND
-								o.concept_id=1190 AND o.value_datetime IS NOT NULL AND
-								o.value_datetime<=:endDate AND e.location_id=:location
-						GROUP BY p.patient_id
-
-						UNION
-
-						/*Patients enrolled in ART Program: OpenMRS Program*/
-						SELECT 	pg.patient_id,MIN(date_enrolled) data_inicio
-						FROM 	patient p INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
-						WHERE 	pg.voided=0 AND p.voided=0 AND program_id=2 AND date_enrolled<=:endDate AND location_id=:location
-						GROUP BY pg.patient_id
-
-						UNION
-
-
-						/*Patients with first drugs pick up date set in Pharmacy: First ART Start Date*/
-						  SELECT 	e.patient_id, MIN(e.encounter_datetime) AS data_inicio
-						  FROM 		patient p
-									INNER JOIN encounter e ON p.patient_id=e.patient_id
-						  WHERE		p.voided=0 AND e.encounter_type=18 AND e.voided=0 AND e.encounter_datetime<=:endDate AND e.location_id=:location
-						  GROUP BY 	p.patient_id
-
-			) inicio
-		GROUP BY patient_id
-	) inicio_real on inicio_real.patient_id = modelodf.patient_id
+		) modelodf ON modelodf.patient_id=inicio_real.patient_id AND modelodf.data_modelo between @startDate and @endDate
 
         LEFT JOIN
         (	SELECT ultimavisita.patient_id,ultimavisita.value_datetime,ultimavisita.encounter_type
@@ -215,7 +230,7 @@ FROM
 					INNER JOIN obs o ON o.encounter_id=e.encounter_id
 					INNER JOIN patient p ON p.patient_id=e.patient_id
 					WHERE 	e.voided=0 AND p.voided=0 and o.voided =0  AND e.encounter_type IN (6,9,18) AND  o.concept_id in (5096 ,1410)
-						and	e.location_id=:location AND e.encounter_datetime <=:endDate  and o.value_datetime is  not null
+						and	e.location_id=@location AND e.encounter_datetime <=@endDate  and o.value_datetime is  not null
 					GROUP BY p.patient_id
 				) ultimavisita
 
@@ -322,7 +337,7 @@ FROM
                 INNER JOIN obs o ON o.encounter_id=e.encounter_id
 				WHERE  ultimolev.encounter_datetime = e.encounter_datetime AND
                         encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND
-						o.concept_id=1087 AND e.location_id=:location
+						o.concept_id=1087 AND e.location_id=@location
               GROUP BY patient_id
 
 			) regime ON regime.patient_id=modelodf.patient_id
@@ -336,13 +351,13 @@ FROM
 					FROM 	encounter e
 							INNER JOIN obs o  ON e.encounter_id=o.encounter_id
 					WHERE 	e.voided=0 AND o.voided=0 AND e.encounter_type =18 AND
-							e.location_id=:location
+							e.location_id=@location
 					GROUP BY e.patient_id
 				) ultimavisita
 				INNER JOIN encounter e ON e.patient_id=ultimavisita.patient_id
 				INNER JOIN obs o ON o.encounter_id=e.encounter_id
                 WHERE  o.concept_id=5096 AND e.encounter_datetime=ultimavisita.encounter_datetime AND
-			  o.voided=0  AND e.voided =0 AND e.encounter_type =18  AND e.location_id=:location
+			  o.voided=0  AND e.voided =0 AND e.encounter_type =18  AND e.location_id=@location
 		) fila ON fila.patient_id=modelodf.patient_id
 
 
@@ -354,7 +369,7 @@ FROM
 		(	SELECT 	p.patient_id,MAX(encounter_datetime) AS encounter_datetime
 			FROM 	encounter e
 			INNER JOIN patient p ON p.patient_id=e.patient_id
-			WHERE 	e.voided=0 AND p.voided=0 AND e.encounter_type IN (6,9) AND e.location_id=:location
+			WHERE 	e.voided=0 AND p.voided=0 AND e.encounter_type IN (6,9) AND e.location_id=@location
 			GROUP BY p.patient_id
 		) ultimoSeguimento
 		INNER JOIN encounter e ON e.patient_id=ultimoSeguimento.patient_id
@@ -364,8 +379,7 @@ FROM
 		) seguimento ON seguimento.patient_id=modelodf.patient_id
 
 	/* ******************************* ultima carga viral **************************** */
-		LEFT JOIN (
-SELECT 	e.patient_id,
+		LEFT JOIN (	    SELECT 	e.patient_id,
 				CASE o.value_coded
                 WHEN 1306  THEN  'Nivel baixo de detencao'
                 WHEN 23814 THEN  'Indectetavel'
@@ -391,8 +405,8 @@ SELECT 	e.patient_id,
 				INNER JOIN obs o ON o.encounter_id=e.encounter_id
                  LEFT JOIN form fr ON fr.form_id = e.form_id
                  WHERE e.encounter_datetime=ult_cv.data_cv_qualitativa
-				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,51,53) AND
-				o.voided=0 AND 	o.concept_id IN( 856, 1305) AND  e.encounter_datetime <= :endDate
+				AND	e.voided=0  AND e.location_id= @location   AND e.encounter_type IN (6,9,13,51,53) AND
+				o.voided=0 AND 	o.concept_id IN( 856, 1305) AND  e.encounter_datetime <= @endDate
                 GROUP BY e.patient_id
 
 		) ultima_cv ON ultima_cv.patient_id=modelodf.patient_id
@@ -423,8 +437,8 @@ SELECT 	e.patient_id,
 				INNER JOIN obs o ON o.encounter_id=e.encounter_id
                 LEFT JOIN form fr ON fr.form_id = e.form_id
                 WHERE e.encounter_datetime=ult_prof.data_prof
-				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN  (6,9,53,60) AND
-				o.voided=0 AND 	o.concept_id  =23985  AND  e.encounter_datetime <= :endDate
+				AND	e.voided=0  AND e.location_id= @location   AND e.encounter_type IN  (6,9,53,60) AND
+				o.voided=0 AND 	o.concept_id  =23985  AND  e.encounter_datetime <= @endDate
                 GROUP BY e.patient_id
 
 		) ultima_profilaxia ON ultima_profilaxia.patient_id=modelodf.patient_id
@@ -448,8 +462,8 @@ SELECT 	e.patient_id,
 				encounter_datetime AS data_modelo
 			FROM 	obs o
 			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
-			WHERE 	e.encounter_type IN (6,9)   and  encounter_datetime between :startDate and :endDate AND  e.voided=0 AND o.voided=0 AND  o.location_id=:location and  o.concept_id in
-            (select case :modelo
+			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND  o.location_id=@location and  o.concept_id in
+            (select case @modelo
                        when 'Grupos de Apoio para adesao comunitaria'  then 23724
                        when 'Abordagem Familiar' then 23725
                        when 'Clubes de Adesao' then 23726
@@ -461,7 +475,6 @@ SELECT 	e.patient_id,
                        when 'Farmacia Privada' then 165177 end  )
 
 
-
              UNION ALL
 
 
@@ -469,12 +482,12 @@ SELECT 	e.patient_id,
 				CASE o.value_coded
                     WHEN '23888' THEN 'Dispensa Semestral de ARV'
 				ELSE '' END AS modelodf,
+
 				encounter_datetime AS data_modelo
 			FROM 	obs o
 			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
-			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id =23739   and  encounter_datetime between :startDate and :endDate
-			  AND o.value_coded= ( select case :modelo when 'Dispensa Semestral de ARV' then 23888 else 1111 end  )  AND o.location_id=:location
-
+			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id =23739 AND o.value_coded= ( select case @modelo when 'Dispensa Semestral de ARV' then 23888 else 1111 end  )  AND o.location_id=@location
+            GROUP BY patient_id
 
 			UNION ALL
 	--
@@ -498,26 +511,22 @@ SELECT 	e.patient_id,
             WHEN 165319 THEN 'SAAJ - Paragem unica no SAAJ'
             WHEN 165320 THEN 'Paragem unica na SMI'
             WHEN 165321 THEN 'DAH - Doença Avançada por HIV'
-			WHEN 23727 THEN  ' Paragem Única (PU)'
-            WHEN 165177 THEN  'FARMAC/Farmácia Privada'
-            WHEN 23731  THEN  ' Dispensa Comunitária (DC)'
-            WHEN 23732  THEN   'Outro Modelo'
-			ELSE '' END AS modelodf ,
+			ELSE 'OUTRO' END AS modelodf ,
 			 first_mdf.encounter_datetime data_modelo
 			FROM
 
-			(	SELECT  p.patient_id,encounter_datetime AS encounter_datetime
+			(	SELECT  p.patient_id,MAX(encounter_datetime) AS encounter_datetime
 				FROM 	encounter e
                           INNER JOIN patient p ON p.patient_id=e.patient_id
                         INNER JOIN obs o ON o.encounter_id =e.encounter_id
-				         and  encounter_datetime between :startDate and :endDate AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id=165174 AND e.encounter_type IN (6,9)  AND e.location_id=:location
+				       AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id=165174 AND e.encounter_type IN (6,9)  AND e.location_id=@location
 				GROUP BY e.patient_id
 			) first_mdf
 			INNER JOIN encounter e ON e.patient_id=first_mdf.patient_id
 			INNER JOIN obs o ON o.encounter_id=e.encounter_id
 			WHERE o.concept_id=165174 AND o.voided=0 and e.voided=0  AND e.encounter_datetime=first_mdf.encounter_datetime AND
-			e.encounter_type IN (6,9)  AND e.location_id=:location   and  o.value_coded in
-            (select case :modelo
+			e.encounter_type IN (6,9)  AND e.location_id=@location   and  o.value_coded in
+            (select case @modelo
             WHEN  'Dispensa Trimestral de ARV'                THEN 23730
             WHEN  'Dispensa Semestral de ARV'                 THEN 23888
             WHEN  'Dispensa Anual de ARV'                     THEN 165314
@@ -532,20 +541,13 @@ SELECT 	e.patient_id,
             WHEN  'Clubes de Adesao'                           THEN 23726
             WHEN  'Extensao de Horario'                        THEN 165316
             WHEN  'Paragem unica no sector da TB'              THEN 165317
-            WHEN  'Paragem unica nos servicos TARV' 	       THEN 165318
-            WHEN  'Paragem unica no SAAJ'      		           THEN 165319
-            WHEN  'Paragem unica na SMI' 				       THEN 165320
-            WHEN  'Doenca Avancada por HIV' 			       THEN 165321
-			WHEN  'Paragem unica'                               THEN 23727
-            WHEN  'FARMAC/Farmacia Privada'                    THEN 165177
-            WHEN   'Dispensa Comunitaria'                       THEN 23731
-            WHEN   'Outro Modelo'                                THEN 23732
-			end    )
+            WHEN  'Paragem unica nos servicos TARV' 	        THEN 165318
+            WHEN  'Paragem unica no SAAJ'      		        THEN 165319
+            WHEN  'Paragem unica na SMI' 				        THEN 165320
+            WHEN  'Doenca Avancada por HIV' 			        THEN 165321 end  )
+			 ) mdl  where  data_modelo is not null GROUP BY patient_id
 
-			) mdl where  data_modelo is not null  GROUP BY patient_id
-
-
-		) modelodf_ultimo ON modelodf_ultimo.patient_id=modelodf.patient_id AND modelodf_ultimo.data_modelo IS NOT NULL AND modelodf_ultimo.data_modelo <= :endDate
+		) modelodf_ultimo ON modelodf_ultimo.patient_id=inicio_real.patient_id AND modelodf.data_modelo <= @endDate
 
 
 

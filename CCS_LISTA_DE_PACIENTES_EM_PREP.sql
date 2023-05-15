@@ -1,6 +1,7 @@
-select 
+select
+
             inicio_real.patient_id,
-			CONCAT(pid.identifier,' ') AS NID,
+			pid.identifier AS NID,
             CONCAT(IFNULL(pn.given_name,''),' ',IFNULL(pn.middle_name,''),' ',IFNULL(pn.family_name,'')) AS 'NomeCompleto',
 			p.gender,
 			DATE_FORMAT(p.birthdate,'%d/%m/%Y') as birthdate ,

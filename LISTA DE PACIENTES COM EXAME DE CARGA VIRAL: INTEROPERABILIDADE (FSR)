@@ -1,0 +1,56 @@
+select 	cargaViral.*,
+		pid.identifier,
+		concat(ifnull(pn.given_name,''),' ',ifnull(pn.middle_name,''),' ',ifnull(pn.family_name,'')) nome,
+		p.gender,
+		timestampdiff(year,p.birthdate,:endDate) idade_actual
+from 
+(	
+	
+	Select 	p.patient_id,
+			date(e.date_created) vlDate,
+			if(oCoded.concept_id is not null,			
+				case oCoded.value_coded
+					when 1306 then 'Nivel baixo de detecao'
+					when 23814 then 'Indetectavel'
+					when 23905 then 'Menor que 10 copias/ml'
+					when 23906 then 'Menor que 20 copias/ml'
+					when 23907 then 'Menor que 40 copias/ml'
+					when 23908 then 'Menor que 400 copias/ml'
+					when 23904 then 'Menor que 839 copias/ml'
+					when 165331 then CONCAT('<',oCoded.comments)
+				else 'Outro' end,  oNumerico.value_numeric) vlValue		
+	from 	patient p 
+			inner join encounter e on e.patient_id=p.patient_id
+			left join obs oNumerico on oNumerico.encounter_id=e.encounter_id and 
+						oNumerico.voided=0 and oNumerico.concept_id=856
+			left join obs oCoded on oCoded.encounter_id=e.encounter_id and 
+						oCoded.voided=0 and oCoded.concept_id=1305
+	where 	p.voided=0 and e.voided=0 and e.encounter_type=51 and  
+			e.location_id=:location and date(e.date_created) between :startDate and :endDate 	
+)cargaViral
+inner join person p on p.person_id=cargaViral.patient_id
+left join 
+(	select pid1.*
+	from patient_identifier pid1
+	inner join 
+		(
+			select patient_id,min(patient_identifier_id) id 
+			from patient_identifier
+			where voided=0
+			group by patient_id
+		) pid2
+	where pid1.patient_id=pid2.patient_id and pid1.patient_identifier_id=pid2.id
+) pid on pid.patient_id=cargaViral.patient_id
+left join 
+(	select pn1.*
+	from person_name pn1
+	inner join 
+		(
+			select person_id,min(person_name_id) id 
+			from person_name
+			where voided=0
+			group by person_id
+		) pn2
+	where pn1.person_id=pn2.person_id and pn1.person_name_id=pn2.id
+) pn on pn.person_id=cargaViral.patient_id
+order by cargaViral.patient_id,cargaViral.vlDate

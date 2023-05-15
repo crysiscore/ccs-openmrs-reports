@@ -1,13 +1,13 @@
 /*
 Name - CCS LISTA DE PACIENTES COM RASTREIO DE DOENCA AVACADA 
 Description - 
-		# Critérios para elegiveis para rastreio de doença avançada:
+		#   Critérios para elegiveis para rastreio de doença avançada:
 		•	Inicios TARV (do período que se pretende extrair a lista), 
 		•	Reinicios (do período que se pretende extrair a lista), 
 		•	Grávidas 
 		•	Falências- 2 CVs consecutivas acima de 1000; Ficha LAB
 		•	Ter iniciado TB ou estar em tratamento TB no periodo( Ficha clinica)
-		Incluir como variável
+		*   Incluir como variável
 		•	último Resultado do CD4 abaixo de 200;
 		•	pacientes com teste de CrAG e TB_LAM;
 		•	Data de Inicio TARV;
@@ -19,6 +19,13 @@ Created Date - 29/08/2021
 Modified  By - Agnaldo  Samuel
 Modification Date - 04/01/2020
 Modification Reason: Novos criterios de elegibilidade
+
+
+USE openmrs;
+SET :startDate:='2022-09-21';
+SET :endDate:='2022-12-20';
+SET :location:=208;
+
 
 */
 
@@ -42,11 +49,13 @@ FROM
                DATE_FORMAT(falencia_cv.data_penult_cv, '%d/%m/%Y') AS data_penult_cv,
             falencia_cv.penult_cv,
             tb_lam.resul_tb_lam,
+            DATE_FORMAT(tb_lam.data_result,'%d/%m/%Y') AS data_tb_lam,
             tb_crag.resul_tb_crag,
+            DATE_FORMAT(tb_crag.data_result,'%d/%m/%Y')  AS data_crag,
             cd4.value_numeric AS cd4,
              DATE_FORMAT( cd4.encounter_datetime, '%d/%m/%Y') as data_cd4,
             permanencia.estado_permanencia,
-			DATE_FORMAT(permanencia.data_consulta, '%d/%m/%Y') AS data_consulta,
+			DATE_FORMAT(permanencia.data_consulta, '%d/%m/%Y') AS data_reinicio,
             telef.value AS telefone,
             DATE_FORMAT(ult_seguimento.encounter_datetime, '%d/%m/%Y') AS data_ult_visita_2,
             DATE_FORMAT(ult_seguimento.value_datetime, '%d/%m/%Y') AS data_proxima_visita,
@@ -57,6 +66,7 @@ FROM
             pad3.address5 AS 'Bairro',
             pad3.address1 AS 'PontoReferencia'
     FROM
+    /* Start  ************************************* Inicio real ************************************/
         (SELECT 
         patient_id, MIN(data_inicio) data_inicio
     FROM
@@ -110,7 +120,34 @@ FROM
             AND e.location_id = :location
     GROUP BY p.patient_id) inicio
     GROUP BY patient_id) inicio_real
-    INNER JOIN person p ON p.person_id = inicio_real.patient_id
+    /* END  **************************************  Inicio real ************************************/
+        INNER JOIN person p ON p.person_id = inicio_real.patient_id
+    /* Start  ************************************ activo 28 dias **********************************/
+        INNER JOIN (SELECT
+        lastvis.patient_id,
+            lastvis.value_datetime,
+            lastvis.encounter_type
+    FROM
+        (SELECT
+        p.patient_id,
+            MAX(o.value_datetime) AS value_datetime,
+            e.encounter_type
+    FROM
+        encounter e
+    INNER JOIN obs o ON o.encounter_id = e.encounter_id
+    INNER JOIN patient p ON p.patient_id = e.patient_id
+    WHERE
+        e.voided = 0 AND p.voided = 0
+            AND o.voided = 0
+            AND e.encounter_type IN (6 , 9, 18)
+            AND o.concept_id IN (5096 , 1410)
+            AND e.location_id = :location
+            AND e.encounter_datetime <= :endDate
+            AND o.value_datetime IS NOT NULL
+    GROUP BY p.patient_id) lastvis) visita ON visita.patient_id = inicio_real.patient_id
+        AND DATEDIFF(:endDate, visita.value_datetime) <= 28
+    /*  END  ************************************* activo 28 dias **********************************/
+    /*  Start  ********************************** person attributees ********************************/
     LEFT JOIN (SELECT 
         pad1.*
     FROM
@@ -153,6 +190,8 @@ FROM
     WHERE
         pid1.patient_id = pid2.patient_id
             AND pid1.patient_identifier_id = pid2.id) pid ON pid.patient_id = inicio_real.patient_id
+    /*  End  ********************************** person attributees **********************************/
+    /* Start ******************************************* Gravida  ***********************************/
     LEFT JOIN (SELECT 
         patient_id, MAX(data_gravida) AS data_gravida
     FROM
@@ -180,9 +219,9 @@ FROM
             AND pp.date_enrolled BETWEEN :startDate AND :endDate
             AND pp.location_id = :location) gravida
     GROUP BY patient_id) gravida_real ON gravida_real.patient_id = inicio_real.patient_id
-
-        /************************** TRATAMENTO DE TUBERCULOSE NA FICHA CLINICA  ****************************/
-               left join 
+    /* End ******************************************* Gravida  *************************************/
+    /* Start ************************ TRATAMENTO DE TUBERCULOSE NA FICHA CLINICA  *******************/
+    LEFT JOIN
 		( Select ultimavisita_tb.patient_id, ultimavisita_tb.encounter_datetime data_marcado_tb,
         CASE o.value_coded
 					WHEN '1256'  THEN 'INICIO'
@@ -194,15 +233,17 @@ FROM
 			(	select 	e.patient_id,max(encounter_datetime) as encounter_datetime
 				from 	encounter e 
                         inner join obs o on o.encounter_id =e.encounter_id
-				       and 	e.voided=0  and o.voided=0   and o.concept_id=1268 and e.encounter_type IN (6,9)  and e.location_id=:location 
+				       and 	e.voided=0  and o.voided=0   and o.concept_id=1268 and e.encounter_type IN (6,9)  and e.location_id=:location
 				group by e.patient_id
 			) ultimavisita_tb
 			inner join encounter e on e.patient_id=ultimavisita_tb.patient_id
 			inner join obs o on o.encounter_id=e.encounter_id			
 			where o.concept_id=1268 and o.voided=0 and e.encounter_datetime=ultimavisita_tb.encounter_datetime and 
-			e.encounter_type in (6,9) and o.value_coded in (1256,1257) and e.location_id=:location 
+			e.encounter_type in (6,9) and o.value_coded in (1256,1257) and e.location_id=:location
+			       and  e.encounter_datetime BETWEEN :startDate AND :endDate
 		) marcado_tb on marcado_tb.patient_id =   inicio_real.patient_id
-
+    /* End *********************** TRATAMENTO DE TUBERCULOSE NA FICHA CLINICA  **********************/
+    /* Start *******************************        Falencia CV           ***************************/
     LEFT JOIN (SELECT 
         e.patient_id,
             lv.data_ult_cv,
@@ -259,68 +300,49 @@ FROM
             AND e.encounter_datetime = lv.data_penult_cv
             AND e.location_id = :location
     GROUP BY patient_id) falencia_cv ON falencia_cv.patient_id = inicio_real.patient_id
-    INNER JOIN (SELECT 
-        lastvis.patient_id,
-            lastvis.value_datetime,
-            lastvis.encounter_type
-    FROM
-        (SELECT 
-        p.patient_id,
-            MAX(o.value_datetime) AS value_datetime,
-            e.encounter_type
-    FROM
-        encounter e
-    INNER JOIN obs o ON o.encounter_id = e.encounter_id
-    INNER JOIN patient p ON p.patient_id = e.patient_id
-    WHERE
-        e.voided = 0 AND p.voided = 0
-            AND o.voided = 0
-            AND e.encounter_type IN (6 , 9, 18)
-            AND o.concept_id IN (5096 , 1410)
-            AND e.location_id = :location
-            AND e.encounter_datetime <= :endDate
-            AND o.value_datetime IS NOT NULL
-    GROUP BY p.patient_id) lastvis) visita ON visita.patient_id = inicio_real.patient_id
-        AND DATEDIFF(:endDate, visita.value_datetime) <= 28
-    LEFT JOIN (SELECT 
-        e.patient_id, o.value_numeric, e.encounter_datetime
-    FROM
-        encounter e
-    INNER JOIN (SELECT 
-        cd4_max.patient_id,
-            MAX(cd4_max.encounter_datetime) AS encounter_datetime
-    FROM
-        (SELECT 
-        e.patient_id, o.value_numeric, encounter_datetime
-    FROM
-        encounter e
-    INNER JOIN obs o ON o.encounter_id = e.encounter_id
-    WHERE
-        e.voided = 0
-            AND e.location_id = :location
-            AND o.voided = 0
-            AND o.concept_id = 1695
-            AND e.encounter_type IN (6 , 9, 53) UNION ALL SELECT 
-        e.patient_id, o.value_numeric, encounter_datetime
-    FROM
-        encounter e
-    INNER JOIN obs o ON o.encounter_id = e.encounter_id
-    WHERE
-        e.voided = 0
-            AND e.location_id = :location
-            AND o.voided = 0
-            AND o.concept_id = 5497
-            AND e.encounter_type IN (6 , 9, 13, 53) ) cd4_max
-    GROUP BY patient_id) cd4_temp ON e.patient_id = cd4_temp.patient_id
-    INNER JOIN obs o ON o.encounter_id = e.encounter_id
-    WHERE
-        e.encounter_datetime = cd4_temp.encounter_datetime
-            AND e.voided = 0
-            AND e.location_id = :location
-            AND o.voided = 0
-            AND o.concept_id IN (1695 , 5497)
-            AND e.encounter_type IN (6 , 9, 13, 53)
-    GROUP BY patient_id) cd4 ON cd4.patient_id = inicio_real.patient_id
+     /****************** ****************************  CD4  Absoluto  *****************************************************/
+        LEFT JOIN(
+            SELECT e.patient_id, o.value_numeric,e.encounter_datetime
+            FROM encounter e INNER JOIN
+		    (
+            SELECT 	cd4_max.patient_id, MAX(cd4_max.encounter_datetime) AS encounter_datetime
+            FROM ( SELECT e.patient_id, o.value_numeric , encounter_datetime
+					FROM encounter e
+							INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					WHERE 	e.voided=0  AND e.location_id=:location  AND
+							o.voided=0 AND o.concept_id=1695 AND e.encounter_type IN (6,9,13,53)
+				) cd4_max
+			GROUP BY patient_id ) cd4_temp
+            ON e.patient_id = cd4_temp.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+            WHERE e.encounter_datetime=cd4_temp.encounter_datetime AND
+			e.voided=0  AND  e.location_id=:location  AND
+            o.voided=0 AND o.concept_id = 1695 AND e.encounter_type IN (6,9,13,53)
+			GROUP BY patient_id
+
+		) cd4 ON cd4.patient_id =  inicio_real.patient_id
+		/****************** ****************************  CD4  Percentual  *****************************************************/
+        LEFT JOIN(
+            SELECT e.patient_id, o.value_numeric,e.encounter_datetime
+            FROM encounter e INNER JOIN
+		    (
+            SELECT 	cd4_max.patient_id, MAX(cd4_max.encounter_datetime) AS encounter_datetime
+            FROM (
+					SELECT 	 e.patient_id, o.value_numeric , encounter_datetime
+					FROM encounter e
+							INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					WHERE 	e.voided=0  AND  e.location_id=:location  AND
+							o.voided=0 AND o.concept_id=730 AND e.encounter_type in (6,9,13,53)  )cd4_max
+			GROUP BY patient_id ) cd4_temp
+            ON e.patient_id = cd4_temp.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+            WHERE e.encounter_datetime=cd4_temp.encounter_datetime AND
+			e.voided=0  AND  e.location_id=:location  AND
+            o.voided=0 AND o.concept_id =730  AND e.encounter_type in (6,9,13,53)
+			GROUP BY patient_id
+
+		) cd4_perc ON cd4_perc.patient_id =  inicio_real.patient_id
+    /* Start ************************************* TB LAM  ******************************************/
     LEFT JOIN (SELECT 
         e.patient_id,
             CASE o.value_coded
@@ -351,6 +373,7 @@ FROM
             AND o.voided = 0
             AND o.concept_id = 23951
     GROUP BY patient_id) tb_lam ON tb_lam.patient_id = inicio_real.patient_id
+    /* Start *********************************** CRAG  **********************************************/
     LEFT JOIN (SELECT 
         e.patient_id,
             CASE o.value_coded
@@ -442,6 +465,8 @@ FROM
             AND p.value IS NOT NULL
             AND p.value <> ''
             AND p.voided = 0) telef ON telef.person_id = inicio_real.patient_id
+
+
     WHERE
         data_inicio BETWEEN :startDate AND :endDate
             OR data_gravida IS NOT NULL

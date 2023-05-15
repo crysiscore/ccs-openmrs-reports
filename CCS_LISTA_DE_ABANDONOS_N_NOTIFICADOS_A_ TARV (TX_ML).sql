@@ -463,7 +463,7 @@ WHERE patient_id NOT IN
 			FROM 	patient p
 					INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
 					INNER JOIN patient_state ps ON pg.patient_program_id=ps.patient_program_id
-					INNER JOIN (SELECT 	pg.patient_id	, MAX(ps.start_date) AS data_ult_estado
+					INNER JOIN ( SELECT 	pg.patient_id	, MAX(ps.start_date) AS data_ult_estado
 							FROM 	patient p
 									INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
 									INNER JOIN patient_state ps ON pg.patient_program_id=ps.patient_program_id

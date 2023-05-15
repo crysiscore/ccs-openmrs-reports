@@ -17,7 +17,7 @@ DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') as data_inicio,
             telef.value AS telefone
             
             
-            FROM ( select 
+            FROM (  select 
         e.patient_id,
        o.value_text AS nome_confidente,
        encounter_datetime,
