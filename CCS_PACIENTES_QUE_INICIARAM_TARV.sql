@@ -1,17 +1,3 @@
-/*
-Name: CCS PACIENTES QUE INICIARAM TARV
-Description:
-              CCS PACIENTES QUE INICIARAM TARV
-    
-
-Created By: Colaco C.
-Created Date: UNK
-
-Change by: 
-Change Date: 
-Change Reason:
-
-*/
 
 select *
 from
@@ -30,7 +16,10 @@ from
 				round(datediff(:endDate,p.birthdate)/365) idade_actual,
               	DATE_FORMAT(inicio_tpi.data_inicio_tpi ,'%d/%m/%Y') as data_inicio_tpi ,
                 outras_prescricoes.medicamento,
-                cd4.cd4 ,
+                     if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%'), '' )
+			 ) AS cd4,
+			  if(cd4.encounter_datetime is not null , DATE_FORMAT(cd4.encounter_datetime,'%d/%m/%Y')  , if(cd4_perc.encounter_datetime is not null, DATE_FORMAT(cd4_perc.encounter_datetime,'%d/%m/%Y') , '' )
+			 ) AS data_cd4,
                 keypop.populacaochave as populacao_chave,
 				numero_confidente.resultado_numero_confidente as ContactoReferencia,
 				DATE_FORMAT(saida.encounter_datetime,'%d/%m/%Y') as data_saida,
@@ -61,72 +50,74 @@ from
 				if(consentimento.patient_id is null,'NAO','SIM') as consentido
 
 		from
-			(select patient_id,data_inicio
-from
-(	
+			(
 
-Select patient_id,min(data_inicio) data_inicio
-		from
-			(	
-			
-				/*Patients on ART who initiated the ARV DRUGS: ART Regimen Start Date*/
-				
-						Select 	p.patient_id,min(e.encounter_datetime) data_inicio
-						from 	patient p 
-								inner join encounter e on p.patient_id=e.patient_id	
-								inner join obs o on o.encounter_id=e.encounter_id
-						where 	e.voided=0 and o.voided=0 and p.voided=0 and 
-								e.encounter_type in (18,6,9) and o.concept_id=1255 and o.value_coded=1256 and 
-								e.encounter_datetime<=:endDate and e.location_id=:location
-						group by p.patient_id
-				
-						union
-				
-						/*Patients on ART who have art start date: ART Start date*/
-						Select 	p.patient_id,min(value_datetime) data_inicio
-						from 	patient p
-								inner join encounter e on p.patient_id=e.patient_id
-								inner join obs o on e.encounter_id=o.encounter_id
-						where 	p.voided=0 and e.voided=0 and o.voided=0 and e.encounter_type in (18,6,9,53) and 
-								o.concept_id=1190 and o.value_datetime is not null and 
-								o.value_datetime<=:endDate and e.location_id=:location
-						group by p.patient_id
 
-						union
-
-						/*Patients enrolled in ART Program: OpenMRS Program*/
-						select 	pg.patient_id,min(date_enrolled) data_inicio
-						from 	patient p inner join patient_program pg on p.patient_id=pg.patient_id
-						where 	pg.voided=0 and p.voided=0 and program_id=2 and date_enrolled<=:endDate and location_id=:location
-						group by pg.patient_id
-						
-						union
-						
-						
-						/*Patients with first drugs pick up date set in Pharmacy: First ART Start Date*/
-						  SELECT 	e.patient_id, MIN(e.encounter_datetime) AS data_inicio 
-						  FROM 		patient p
-									inner join encounter e on p.patient_id=e.patient_id
-						  WHERE		p.voided=0 and e.encounter_type=18 AND e.voided=0 and e.encounter_datetime<=:endDate and e.location_id=:location
-						  GROUP BY 	p.patient_id
-					  
-					
-						/*Patients with first drugs pick up date set: Recepcao Levantou ARV*/
-						/*Select 	p.patient_id,min(value_datetime) data_inicio
-						from 	patient p
-								inner join encounter e on p.patient_id=e.patient_id
-								inner join obs o on e.encounter_id=o.encounter_id
-						where 	p.voided=0 and e.voided=0 and o.voided=0 and e.encounter_type=52 and 
-								o.concept_id=23866 and o.value_datetime is not null and 
-								o.value_datetime<=:endDate and e.location_id=:location
-						group by p.patient_id		*/
-					
-				
-				
-			) inicio
-		group by patient_id	
-	)inicio1
-where data_inicio between :startDate and :endDate
+SELECT patient_id ,art_start_date as data_inicio
+FROM (SELECT patient_id, MIN(art_start_date) art_start_date
+      FROM (SELECT p.patient_id, MIN(e.encounter_datetime) art_start_date
+            FROM patient p
+                     INNER JOIN encounter e ON p.patient_id = e.patient_id
+                     INNER JOIN obs o ON o.encounter_id = e.encounter_id
+            WHERE e.voided = 0
+              AND o.voided = 0
+              AND p.voided = 0
+              AND e.encounter_type in (18, 6, 9)
+              AND o.concept_id = 1255
+              AND o.value_coded = 1256
+              AND e.encounter_datetime <= :endDate
+              AND e.location_id = :location
+            GROUP BY p.patient_id
+            UNION
+            SELECT p.patient_id, MIN(value_datetime) art_start_date
+            FROM patient p
+                     INNER JOIN encounter e ON p.patient_id = e.patient_id
+                     INNER JOIN obs o ON e.encounter_id = o.encounter_id
+            WHERE p.voided = 0
+              AND e.voided = 0
+              AND o.voided = 0
+              AND e.encounter_type IN (18, 6, 9, 53)
+              AND o.concept_id = 1190
+              AND o.value_datetime is NOT NULL
+              AND o.value_datetime <= :endDate
+              AND e.location_id = :location
+            GROUP BY p.patient_id
+            UNION
+            SELECT pg.patient_id, MIN(date_enrolled) art_start_date
+            FROM patient p
+                     INNER JOIN patient_program pg ON p.patient_id = pg.patient_id
+            WHERE pg.voided = 0
+              AND p.voided = 0
+              AND program_id = 2
+              AND date_enrolled <= :endDate
+              AND location_id = :location
+            GROUP BY pg.patient_id
+            UNION
+            SELECT e.patient_id, MIN(e.encounter_datetime) AS art_start_date
+            FROM patient p
+                     INNER JOIN encounter e ON p.patient_id = e.patient_id
+            WHERE p.voided = 0
+              AND e.encounter_type = 18
+              AND e.voided = 0
+              AND e.encounter_datetime <= :endDate
+              AND e.location_id = :location
+            GROUP BY p.patient_id
+            UNION
+            SELECT p.patient_id, MIN(value_datetime) art_start_date
+            FROM patient p
+                     INNER JOIN encounter e ON p.patient_id = e.patient_id
+                     INNER JOIN obs o ON e.encounter_id = o.encounter_id
+            WHERE p.voided = 0
+              AND e.voided = 0
+              AND o.voided = 0
+              AND e.encounter_type = 52
+              AND o.concept_id = 23866
+              AND o.value_datetime is NOT NULL
+              AND o.value_datetime <= :endDate
+              AND e.location_id = :location
+            GROUP BY p.patient_id) art_start
+      GROUP BY patient_id) tx_new
+WHERE art_start_date BETWEEN :startDate AND :endDate
 )inicio_real
 			inner join person p on p.person_id=inicio_real.patient_id
 			left join
@@ -569,14 +560,48 @@ select resultado_numero_confidente, nr_confidente.patient_id
                  
 			) inicio_tpi on inicio_tpi.patient_id=inicio_real.patient_id
 		  /****************** ****************************  CD4   ********* *****************************************************/
-        LEFT JOIN(  
-        	SELECT 	e.patient_id,o.value_numeric cd4,  MAX(encounter_datetime)
-			FROM encounter e 
-					INNER JOIN obs o ON o.encounter_id=e.encounter_id
-			WHERE 	e.voided=0  AND 
-					o.voided=0 AND o.concept_id=1695 AND e.encounter_type IN (6,9,53)  
-			GROUP BY e.patient_id
+ /****************** ****************************  CD4  Absoluto  *****************************************************/
+        LEFT JOIN(
+            SELECT e.patient_id, o.value_numeric,e.encounter_datetime
+            FROM encounter e INNER JOIN
+		    (
+            SELECT 	cd4_max.patient_id, MAX(cd4_max.encounter_datetime) AS encounter_datetime
+            FROM ( SELECT e.patient_id, o.value_numeric , encounter_datetime
+					FROM encounter e
+							INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					WHERE 	e.voided=0  AND e.location_id=@location  AND
+							o.voided=0 AND o.concept_id=1695 AND e.encounter_type IN (6,9,13,53)
+				) cd4_max
+			GROUP BY patient_id ) cd4_temp
+            ON e.patient_id = cd4_temp.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+            WHERE e.encounter_datetime=cd4_temp.encounter_datetime AND
+			e.voided=0  AND  e.location_id=@location  AND
+            o.voided=0 AND o.concept_id = 1695 AND e.encounter_type IN (6,9,13,53)
+			GROUP BY patient_id
+
 		) cd4 ON cd4.patient_id =  inicio_real.patient_id
+		/****************** ****************************  CD4  Percentual  *****************************************************/
+        LEFT JOIN(
+            SELECT e.patient_id, o.value_numeric,e.encounter_datetime
+            FROM encounter e INNER JOIN
+		    (
+            SELECT 	cd4_max.patient_id, MAX(cd4_max.encounter_datetime) AS encounter_datetime
+            FROM (
+					SELECT 	 e.patient_id, o.value_numeric , encounter_datetime
+					FROM encounter e
+							INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					WHERE 	e.voided=0  AND  e.location_id=@location  AND
+							o.voided=0 AND o.concept_id=730 AND e.encounter_type in (6,9,13,53)  )cd4_max
+			GROUP BY patient_id ) cd4_temp
+            ON e.patient_id = cd4_temp.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+            WHERE e.encounter_datetime=cd4_temp.encounter_datetime AND
+			e.voided=0  AND  e.location_id=@location  AND
+            o.voided=0 AND o.concept_id =730  AND e.encounter_type in (6,9,13,53)
+			GROUP BY patient_id
+
+		) cd4_perc ON cd4_perc.patient_id =  inicio_real.patient_id
    
 			left join
 			(	select 	p.patient_id

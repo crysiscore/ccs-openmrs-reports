@@ -162,7 +162,7 @@ SELECT visita2.patient_id ,
     WHERE visita.patient_id = visita2.patient_id
     ORDER BY encounter_datetime  DESC
     LIMIT 1,1
-) AS penul_cv , (	SELECT	 visita.encounter_datetime
+) AS penul_cv ,(	SELECT	 visita.encounter_datetime
 					FROM
                     ( SELECT e.patient_id, encounter_datetime
                       FROM encounter e
@@ -175,7 +175,7 @@ SELECT visita2.patient_id ,
     WHERE visita.patient_id = visita2.patient_id
     ORDER BY encounter_datetime  DESC
     LIMIT 1,1
-) AS data_penul
+) AS data_penul_cv
 FROM 	   ( SELECT e.patient_id, encounter_datetime, o.value_numeric
                       FROM encounter e
                                INNER JOIN obs o ON e.encounter_id = o.encounter_id
@@ -184,10 +184,4 @@ FROM 	   ( SELECT e.patient_id, encounter_datetime, o.value_numeric
                         AND o.voided = 0
                         AND o.concept_id IN (856)
 				) visita2
-GROUP BY visita2.patient_id ;
-
-		SELECT 	e.patient_id,MAX(encounter_datetime) AS data_ficha_rastreio_familiar
-							FROM encounter e
-							 WHERE e.form_id = 146 AND e.voided=0
-                          --   AND e.location_id=@location
-							GROUP BY patient_id
+GROUP BY visita2.patient_id

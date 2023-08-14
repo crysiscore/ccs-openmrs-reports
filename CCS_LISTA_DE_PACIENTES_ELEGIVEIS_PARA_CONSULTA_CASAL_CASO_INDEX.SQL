@@ -1,27 +1,365 @@
-    
-    
-     /***************************    Confidente  Nome ****************************************/
-     
+
+SELECT
+    *  FROM (
 SELECT      f_nome.patient_id,
 DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') as data_inicio,
  ROUND(DATEDIFF(:endDate,p.birthdate)/365) idade_actual,
-             CONCAT(pid.identifier,' ') AS NID,
-            CONCAT(IFNULL(pn.given_name,''),' ',IFNULL(pn.middle_name,''),' ',IFNULL(pn.family_name,'')) AS 'NomeCompleto',
-			p.gender,
-             confidente.nome as nome_confidente, f_nome.nome_confidente as nome_familiar , 	DATE_FORMAT(f_nome.encounter_datetime,'%d/%m/%Y') AS data_registo ,   f_parentesco.parentesco ,   f_idade.idade, 
-			f_teste_hiv.teste_hiv  ,  f_cuidados_hiv.cuidados_hiv ,  f_ccr.ccr ,f_nid.nid as nid_familiar ,  
-			DATE_FORMAT(ult_seguimento.encounter_datetime, '%d/%m/%Y') AS data_ult_consulta,
-            DATE_FORMAT(ult_seguimento.value_datetime, '%d/%m/%Y') AS data_proxima_visita,
-            DATE_FORMAT(fila.encounter_datetime,'%d/%m/%Y') AS data_ult_levantamento,
-            DATE_FORMAT(fila.value_datetime,'%d/%m/%Y') AS fila_proximo_marcado ,
-            telef.value AS telefone
+           CONCAT(pid.identifier,' ') AS NID,
+           CONCAT(IFNULL(pn.given_name,''),' ',IFNULL(pn.middle_name,''),' ',IFNULL(pn.family_name,'')) AS 'NomeCompleto',
+		   p.gender,
+           confidente.nome as nome_confidente, f_nome.nome_confidente as nome_familiar , 	DATE_FORMAT(f_nome.encounter_datetime,'%d/%m/%Y') AS data_registo ,   f_parentesco.parentesco ,   f_idade.idade,
+		   f_teste_hiv.teste_hiv  ,  f_cuidados_hiv.cuidados_hiv ,  f_ccr.ccr ,f_nid.nid as nid_familiar ,
+		   DATE_FORMAT(ult_seguimento.encounter_datetime, '%d/%m/%Y') AS data_ult_consulta,
+           DATE_FORMAT(ult_seguimento.value_datetime, '%d/%m/%Y') AS data_proxima_visita,
+           ult_seguimento.value_datetime AS proxima_visita,
+           DATE_FORMAT(fila.encounter_datetime,'%d/%m/%Y') AS data_ult_levantamento,
+           DATE_FORMAT(fila.value_datetime,'%d/%m/%Y') AS fila_proximo_marcado ,
+           DATE_FORMAT(ficha_rastreio_familiar.data_ficha_rastreio_familiar,'%d/%m/%Y') as data_ficha_rastreio_familiar,
+           telef.value AS telefone
             
             
-            FROM (  select 
+           FROM
+
+          (select patient_id, data_inicio
+             FROM (select inicio_fila_seg_prox.*,
+                       GREATEST(COALESCE(data_fila, data_seguimento), COALESCE(data_seguimento, data_fila))    data_usar_c,
+                       GREATEST(COALESCE(data_proximo_lev, data_proximo_seguimento, data_recepcao_levantou30),
+                                COALESCE(data_proximo_seguimento, data_proximo_lev, data_recepcao_levantou30),
+                                COALESCE(data_recepcao_levantou30, data_proximo_seguimento, data_proximo_lev)) data_usar
+                from (select inicio_fila_seg.*,
+                             max(obs_fila.value_datetime)                      data_proximo_lev,
+                             max(obs_seguimento.value_datetime)                data_proximo_seguimento,
+                             date_add(data_recepcao_levantou, interval 30 day) data_recepcao_levantou30
+                      from (select inicio.*,
+                                   saida.data_estado,
+                                   max_fila.data_fila,
+                                   max_consulta.data_seguimento,
+                                   max_recepcao.data_recepcao_levantou
+                            from (select patient_id, min(data_inicio) data_inicio
+                                  from (select p.patient_id, min(e.encounter_datetime) data_inicio
+                                        from patient p
+                                                 inner join person pe on pe.person_id = p.patient_id
+                                                 inner join encounter e on p.patient_id = e.patient_id
+                                                 inner join obs o on o.encounter_id = e.encounter_id
+                                        where e.voided = 0
+                                          and o.voided = 0
+                                          and p.voided = 0
+                                          and pe.voided = 0
+                                          and e.encounter_type in (18, 6, 9)
+                                          and o.concept_id = 1255
+                                          and o.value_coded = 1256
+                                          and e.encounter_datetime <= :endDate
+                                          and e.location_id = :location
+                                        group by p.patient_id
+                                        union
+
+                                        select p.patient_id, min(value_datetime) data_inicio
+                                        from patient p
+                                                 inner join person pe on pe.person_id = p.patient_id
+                                                 inner join encounter e on p.patient_id = e.patient_id
+                                                 inner join obs o on e.encounter_id = o.encounter_id
+                                        where p.voided = 0
+                                          and pe.voided = 0
+                                          and e.voided = 0
+                                          and o.voided = 0
+                                          and e.encounter_type in (18, 6, 9, 53)
+                                          and o.concept_id = 1190
+                                          and o.value_datetime is not null
+                                          and o.value_datetime <= :endDate
+                                          and e.location_id = :location
+                                        group by p.patient_id
+                                        union
+
+                                        select pg.patient_id, min(date_enrolled) data_inicio
+                                        from patient p
+                                                 inner join person pe on pe.person_id = p.patient_id
+                                                 inner join patient_program pg on p.patient_id = pg.patient_id
+                                        where pg.voided = 0
+                                          and p.voided = 0
+                                          and pe.voided = 0
+                                          and program_id = 2
+                                          and date_enrolled <= :endDate
+                                          and location_id = :location
+                                        group by pg.patient_id
+                                        union
+
+                                        select e.patient_id, MIN(e.encounter_datetime) AS data_inicio
+                                        FROM patient p
+                                                 inner join person pe on pe.person_id = p.patient_id
+                                                 inner join encounter e on p.patient_id = e.patient_id
+                                        WHERE p.voided = 0
+                                          and pe.voided = 0
+                                          and e.encounter_type = 18
+                                          AND e.voided = 0
+                                          and e.encounter_datetime <= :endDate
+                                          and e.location_id = :location
+                                        GROUP BY p.patient_id
+                                        union
+
+                                        select p.patient_id, min(value_datetime) data_inicio
+                                        from patient p
+                                                 inner join person pe on pe.person_id = p.patient_id
+                                                 inner join encounter e on p.patient_id = e.patient_id
+                                                 inner join obs o on e.encounter_id = o.encounter_id
+                                        where p.voided  = 0
+                                          and pe.voided = 0
+                                          and e.voided  = 0
+                                          and o.voided  = 0
+                                          and e.encounter_type = 52
+                                          and o.concept_id = 23866
+                                          and o.value_datetime is not null
+                                          and o.value_datetime <= :endDate
+                                          and e.location_id = :location
+                                        group by p.patient_id) inicio_real
+                                  group by patient_id) inicio
+                                     left join
+                                 (select patient_id, max(data_estado) data_estado
+                                  from (select distinct max_estado.patient_id, max_estado.data_estado
+                                        from (select pg.patient_id,
+                                                     max(ps.start_date) data_estado
+                                              from patient p
+                                                       inner join person pe on pe.person_id = p.patient_id
+                                                       inner join patient_program pg on p.patient_id = pg.patient_id
+                                                       inner join patient_state ps on pg.patient_program_id = ps.patient_program_id
+                                              where pg.voided = 0
+                                                and ps.voided = 0
+                                                and p.voided  = 0
+                                                and pe.voided = 0
+                                                and pg.program_id = 2
+                                                and ps.start_date <= :endDate
+                                                and pg.location_id = :location
+                                              group by pg.patient_id) max_estado
+                                                 inner join patient_program pp on pp.patient_id = max_estado.patient_id
+                                                 inner join patient_state ps
+                                                            on ps.patient_program_id = pp.patient_program_id and
+                                                               ps.start_date = max_estado.data_estado
+                                        where pp.program_id = 2
+                                          and ps.state in (8, 10)
+                                          and pp.voided = 0
+                                          and ps.voided = 0
+                                          and pp.location_id = :location
+                                        union
+                                        select p.patient_id,
+                                               max(o.obs_datetime) data_estado
+                                        from patient p
+                                                 inner join person pe on pe.person_id = p.patient_id
+                                                 inner join encounter e on p.patient_id = e.patient_id
+                                                 inner join obs o on e.encounter_id = o.encounter_id
+                                        where e.voided = 0
+                                          and o.voided = 0
+                                          and p.voided = 0
+                                          and pe.voided = 0
+                                          and e.encounter_type in (53, 6)
+                                          and o.concept_id in (6272, 6273)
+                                          and o.value_coded in (1366, 1709)
+                                          and o.obs_datetime <= :endDate
+                                          and e.location_id = :location
+                                        group by p.patient_id
+                                        union
+                                        select person_id as patient_id, death_date as data_estado
+                                        from person
+                                        where dead = 1
+                                          and voided = 0
+                                          and death_date is not null
+                                          and death_date <= :endDate
+                                        union
+                                        select p.patient_id,
+                                               max(obsObito.obs_datetime) data_estado
+                                        from patient p
+                                                 inner join person pe on pe.person_id = p.patient_id
+                                                 inner join encounter e on p.patient_id = e.patient_id
+                                                 inner join obs obsObito on e.encounter_id = obsObito.encounter_id
+                                        where e.voided = 0
+                                          and p.voided = 0
+                                          and pe.voided = 0
+                                          and obsObito.voided = 0
+                                          and e.encounter_type in (21, 36, 37)
+                                          and e.encounter_datetime <= :endDate
+                                          and e.location_id = :location
+                                          and obsObito.concept_id in (2031, 23944, 23945)
+                                          and obsObito.value_coded = 1366
+                                        group by p.patient_id
+
+                                        union
+
+                                        select saidas_por_transferencia.patient_id, data_estado
+                                        from (select saidas_por_transferencia.patient_id, max(data_estado) data_estado
+                                              from (select distinct max_estado.patient_id, max_estado.data_estado
+                                                    from (select pg.patient_id, max(ps.start_date) data_estado
+                                                          from patient p
+                                                                   inner join person pe on pe.person_id = p.patient_id
+                                                                   inner join patient_program pg on p.patient_id = pg.patient_id
+                                                                   inner join patient_state ps on pg.patient_program_id = ps.patient_program_id
+                                                          where pg.voided = 0
+                                                            and ps.voided = 0
+                                                            and p.voided = 0
+                                                            and pe.voided = 0
+                                                            and pg.program_id = 2
+                                                            and ps.start_date <= :endDate
+                                                            and pg.location_id = :location
+                                                          group by pg.patient_id) max_estado
+                                                             inner join patient_program pp on pp.patient_id = max_estado.patient_id
+                                                             inner join patient_state ps on ps.patient_program_id =
+                                                                                            pp.patient_program_id and
+                                                                                            ps.start_date =
+                                                                                            max_estado.data_estado
+                                                    where pp.program_id = 2
+                                                      and ps.state = 7
+                                                      and pp.voided = 0
+                                                      and ps.voided = 0
+                                                      and pp.location_id = :location
+
+                                                    union
+
+                                                    select p.patient_id, max(o.obs_datetime) data_estado
+                                                    from patient p
+                                                             inner join person pe on pe.person_id = p.patient_id
+                                                             inner join encounter e on p.patient_id = e.patient_id
+                                                             inner join obs o on e.encounter_id = o.encounter_id
+                                                    where e.voided = 0
+                                                      and o.voided = 0
+                                                      and p.voided = 0
+                                                      and pe.voided = 0
+                                                      and e.encounter_type in (53, 6)
+                                                      and o.concept_id in (6272, 6273)
+                                                      and o.value_coded = 1706
+                                                      and o.obs_datetime <= :endDate
+                                                      and e.location_id = :location
+                                                    group by p.patient_id
+
+                                                    union
+
+                                                    select ultimaBusca.patient_id, ultimaBusca.data_estado
+                                                    from (select p.patient_id, max(e.encounter_datetime) data_estado
+                                                          from patient p
+                                                                   inner join person pe on pe.person_id = p.patient_id
+                                                                   inner join encounter e on p.patient_id = e.patient_id
+                                                                   inner join obs o on o.encounter_id = e.encounter_id
+                                                          where e.voided = 0
+                                                            and p.voided = 0
+                                                            and pe.voided = 0
+                                                            and e.encounter_datetime <= :endDate
+                                                            and e.encounter_type = 21
+                                                            and e.location_id = :location
+                                                          group by p.patient_id) ultimaBusca
+                                                             inner join encounter e on e.patient_id = ultimaBusca.patient_id
+                                                             inner join obs o on o.encounter_id = e.encounter_id
+                                                    where e.encounter_type = 21
+                                                      and o.voided = 0
+                                                      and o.concept_id = 2016
+                                                      and o.value_coded in (1706, 23863)
+                                                      and ultimaBusca.data_estado = e.encounter_datetime
+                                                      and e.location_id = :location) saidas_por_transferencia
+                                              group by patient_id) saidas_por_transferencia
+                                                 left join
+                                             (select patient_id, max(data_ultimo_levantamento) data_ultimo_levantamento
+                                              from (select ultimo_fila.patient_id,
+                                                           date_add(obs_fila.value_datetime, interval 1 day) data_ultimo_levantamento
+                                                    from (select p.patient_id, max(encounter_datetime) data_fila
+                                                          from patient p
+                                                                   inner join person pe on pe.person_id = p.patient_id
+                                                                   inner join encounter e on e.patient_id = p.patient_id
+                                                          where p.voided = 0
+                                                            and pe.voided = 0
+                                                            and e.voided = 0
+                                                            and e.encounter_type = 18
+                                                            and e.location_id = :location
+                                                            and e.encounter_datetime <= :endDate
+                                                          group by p.patient_id) ultimo_fila
+                                                             left join
+                                                         obs obs_fila on obs_fila.person_id = ultimo_fila.patient_id
+                                                             and obs_fila.voided = 0
+                                                             and obs_fila.obs_datetime = ultimo_fila.data_fila
+                                                             and obs_fila.concept_id = 5096
+                                                             and obs_fila.location_id = :location
+
+                                                    union
+
+                                                    select p.patient_id,
+                                                           date_add(max(value_datetime), interval 31 day) data_ultimo_levantamento
+                                                    from patient p
+                                                             inner join person pe on pe.person_id = p.patient_id
+                                                             inner join encounter e on p.patient_id = e.patient_id
+                                                             inner join obs o on e.encounter_id = o.encounter_id
+                                                    where p.voided = 0
+                                                      and pe.voided = 0
+                                                      and e.voided = 0
+                                                      and o.voided = 0
+                                                      and e.encounter_type = 52
+                                                      and o.concept_id = 23866
+                                                      and o.value_datetime is not null
+                                                      and e.location_id = :location
+                                                      and o.value_datetime <= :endDate
+                                                    group by p.patient_id) ultimo_levantamento
+                                              group by patient_id) ultimo_levantamento
+                                             on saidas_por_transferencia.patient_id = ultimo_levantamento.patient_id
+                                        where ultimo_levantamento.data_ultimo_levantamento <= :endDate) allSaida
+                                  group by patient_id) saida on inicio.patient_id = saida.patient_id
+                                     left join
+                                 (select p.patient_id, max(encounter_datetime) data_fila
+                                  from patient p
+                                           inner join person pe on pe.person_id = p.patient_id
+                                           inner join encounter e on e.patient_id = p.patient_id
+                                  where p.voided = 0
+                                    and pe.voided = 0
+                                    and e.voided = 0
+                                    and e.encounter_type = 18
+                                    and e.location_id = :location
+                                    and e.encounter_datetime <= :endDate
+                                  group by p.patient_id) max_fila on inicio.patient_id = max_fila.patient_id
+                                     left join
+                                 (select p.patient_id, max(encounter_datetime) data_seguimento
+                                  from patient p
+                                           inner join person pe on pe.person_id = p.patient_id
+                                           inner join encounter e on e.patient_id = p.patient_id
+                                  where p.voided = 0
+                                    and pe.voided = 0
+                                    and e.voided = 0
+                                    and e.encounter_type in (6, 9)
+                                    and e.location_id = :location
+                                    and e.encounter_datetime <= :endDate
+                                  group by p.patient_id) max_consulta on inicio.patient_id = max_consulta.patient_id
+                                     left join
+                                 (select p.patient_id, max(value_datetime) data_recepcao_levantou
+                                  from patient p
+                                           inner join person pe on pe.person_id = p.patient_id
+                                           inner join encounter e on p.patient_id = e.patient_id
+                                           inner join obs o on e.encounter_id = o.encounter_id
+                                  where p.voided = 0
+                                    and pe.voided = 0
+                                    and e.voided = 0
+                                    and o.voided = 0
+                                    and e.encounter_type = 52
+                                    and o.concept_id = 23866
+                                    and o.value_datetime is not null
+                                    and o.value_datetime <= :endDate
+                                    and e.location_id = :location
+                                  group by p.patient_id) max_recepcao on inicio.patient_id = max_recepcao.patient_id
+                            group by inicio.patient_id) inicio_fila_seg
+                               left join
+                           obs obs_fila on obs_fila.person_id = inicio_fila_seg.patient_id
+                               and obs_fila.voided = 0
+                               and obs_fila.obs_datetime = inicio_fila_seg.data_fila
+                               and obs_fila.concept_id = 5096
+                               and obs_fila.location_id = :location
+                               left join
+                           obs obs_seguimento on obs_seguimento.person_id = inicio_fila_seg.patient_id
+                               and obs_seguimento.voided = 0
+                               and obs_seguimento.obs_datetime = inicio_fila_seg.data_seguimento
+                               and obs_seguimento.concept_id = 1410
+                               and obs_seguimento.location_id = :location
+                      group by inicio_fila_seg.patient_id) inicio_fila_seg_prox
+                group by patient_id) coorte12meses_final
+          where (data_estado is null or (data_estado is not null and data_usar_c > data_estado))
+            and date_add(data_usar, interval 28 day) >= CURDATE()
+   ) inicio_real
+
+  INNER JOIN
+(  select
         e.patient_id,
-       o.value_text AS nome_confidente,
-       encounter_datetime,
-       o.obs_group_id
+        o.value_text AS nome_confidente,
+         encounter_datetime,
+        o.obs_group_id
     FROM
         (SELECT 
         e.patient_id, MAX(encounter_datetime) AS data_fr
@@ -33,7 +371,7 @@ DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') as data_inicio,
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 23778
-            AND e.encounter_datetime BETWEEN :startDate AND :endDate AND e.location_id=:location
+            AND e.encounter_datetime <= :endDate  AND e.location_id=:location
     GROUP BY patient_id) fr
     INNER JOIN encounter e ON e.patient_id = fr.patient_id
     INNER JOIN obs o ON o.encounter_id = e.encounter_id
@@ -44,59 +382,10 @@ DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') as data_inicio,
             AND o.voided = 0
             AND o.concept_id = 23778 
             AND e.location_id=:location
-      ) f_nome
-    INNER JOIN person p ON p.person_id=f_nome.patient_id
-LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
-		FROM
-			(	
-			
-				/*Patients on ART who initiated the ARV DRUGS: ART Regimen Start Date*/
-				
-						SELECT 	p.patient_id,MIN(e.encounter_datetime) data_inicio
-						FROM 	patient p 
-								INNER JOIN encounter e ON p.patient_id=e.patient_id	
-								INNER JOIN obs o ON o.encounter_id=e.encounter_id
-						WHERE 	e.voided=0 AND o.voided=0 AND p.voided=0 AND 
-								e.encounter_type IN (18,6,9) AND o.concept_id=1255 AND o.value_coded=1256 AND 
-								e.encounter_datetime<=:endDate AND e.location_id=:location
-						GROUP BY p.patient_id
-				
-						UNION
-				
-						/*Patients on ART who have art start date: ART Start date*/
-						SELECT 	p.patient_id,MIN(value_datetime) data_inicio
-						FROM 	patient p
-								INNER JOIN encounter e ON p.patient_id=e.patient_id
-								INNER JOIN obs o ON e.encounter_id=o.encounter_id
-						WHERE 	p.voided=0 AND e.voided=0 AND o.voided=0 AND e.encounter_type IN (18,6,9,53) AND 
-								o.concept_id=1190 AND o.value_datetime IS NOT NULL AND 
-								o.value_datetime<=:endDate AND e.location_id=:location
-						GROUP BY p.patient_id
+      ) f_nome on f_nome.patient_id=inicio_real.patient_id
 
-						UNION
+    INNER JOIN person p ON p.person_id=inicio_real.patient_id
 
-						/*Patients enrolled in ART Program: OpenMRS Program*/
-						SELECT 	pg.patient_id,MIN(date_enrolled) data_inicio
-						FROM 	patient p INNER JOIN patient_program pg ON p.patient_id=pg.patient_id
-						WHERE 	pg.voided=0 AND p.voided=0 AND program_id=2 AND date_enrolled<=:endDate AND location_id=:location
-						GROUP BY pg.patient_id
-						
-						UNION
-						
-						
-						/*Patients with first drugs pick up date set in Pharmacy: First ART Start Date*/
-						  SELECT 	e.patient_id, MIN(e.encounter_datetime) AS data_inicio 
-						  FROM 		patient p
-									INNER JOIN encounter e ON p.patient_id=e.patient_id
-						  WHERE		p.voided=0 AND e.encounter_type=18 AND e.voided=0 AND e.encounter_datetime<=:endDate AND e.location_id=:location
-						  GROUP BY 	p.patient_id
-					  
-
-				
-				
-			) inicio
-		GROUP BY patient_id	
-	)inicio_real ON inicio_real.patient_id = f_nome.patient_id
     	LEFT JOIN 			
 			(	SELECT pn1.*
 				FROM person_name pn1
@@ -158,7 +447,7 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 23704
-            AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            AND e.encounter_datetime <=:endDate
             AND e.location_id=:location
     GROUP BY patient_id) fr
     INNER JOIN encounter e ON e.patient_id = fr.patient_id
@@ -190,7 +479,7 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 23777
-            AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            AND e.encounter_datetime <=:endDate
             AND e.location_id=:location
     GROUP BY patient_id) fr
     INNER JOIN encounter e ON e.patient_id = fr.patient_id
@@ -227,7 +516,7 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 23779
-            AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            AND e.encounter_datetime <= :endDate
             AND e.location_id=:location
     GROUP BY patient_id) fr
     INNER JOIN encounter e ON e.patient_id = fr.patient_id
@@ -263,7 +552,7 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 23780
-            AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            AND e.encounter_datetime <= :endDate
             AND e.location_id=:location
     GROUP BY patient_id) fr
     INNER JOIN encounter e ON e.patient_id = fr.patient_id
@@ -300,7 +589,7 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 1885
-            AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            AND e.encounter_datetime <= :endDate
             AND e.location_id=:location
     GROUP BY patient_id) fr
     INNER JOIN encounter e ON e.patient_id = fr.patient_id
@@ -332,7 +621,7 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 23781
-            AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            AND e.encounter_datetime <= :endDate
             AND e.location_id=:location
     GROUP BY patient_id) fr
     INNER JOIN encounter e ON e.patient_id = fr.patient_id
@@ -367,7 +656,7 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 23704
-            AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            AND e.encounter_datetime <= :endDate
             AND e.location_id=:location
     GROUP BY patient_id) fr
     INNER JOIN encounter e ON e.patient_id = fr.patient_id
@@ -397,7 +686,7 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
             AND e.voided = 0
             AND o.voided = 0
             AND o.concept_id = 1740
-            AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            AND e.encounter_datetime <= :endDate
             AND e.location_id=:location
     GROUP BY patient_id) fr
     INNER JOIN encounter e ON e.patient_id = fr.patient_id
@@ -463,6 +752,19 @@ LEFT JOIN 	(	SELECT patient_id,MIN(data_inicio) data_inicio
     AND p.value IS NOT NULL AND p.value<>'' AND p.voided=0 
 	) telef  ON telef.person_id = f_nome.patient_id
 
+   	LEFT JOIN
+    (
+							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_ficha_rastreio_familiar
+							FROM encounter e
+							
+							 WHERE e.form_id = 146 AND e.voided=0
+                            AND e.location_id=:location
+							GROUP BY patient_id
+
+			      )  ficha_rastreio_familiar ON ficha_rastreio_familiar.patient_id = f_nome.patient_id
 
 
 group by  f_nome.patient_id,  f_nome.nome_confidente
+    ) pat_index
+ where   data_ficha_rastreio_familiar is null and   proxima_visita between  curdate() and :endDate
+

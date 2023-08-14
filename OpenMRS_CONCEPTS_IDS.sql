@@ -13,7 +13,7 @@ where c.uuid in ( "e1da2812-1d5f-11e0-b929-000c29ad1d07",
 -- Regime T FC
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ( "e1d6247e-1d5f-11e0-b929-000c29ad1d07" ,"e1da2704-1d5f-11e0-b929-000c29ad1d07")
+where c.=c.concept_id in ( 5096)
  and locale ='pt';
 
 -- Carga viral
@@ -54,23 +54,22 @@ where c.uuid in ("687d72a2-c123-42b1-8083-968c4588b243",
 
 
 -- ------------------------------------ Diagnostico TB
+use altomae;
+
+select * from encounter_type where name in ('PTV: PRE-NATAL INICIAL');
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ("40a9a12b-1205-4a55-bb93-caf15452bf61"  )
+where c.uuid in ("e1d6247e-1d5f-11e0-b929-000c29ad1d07"  )
  and locale ='pt';
 
 -- Avaliacao Nutricional : Grau
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ("0b1a2c8c-55d2-42a8-a3d6-62828f52d49a", "e1d85b22-1d5f-11e0-b929-000c29ad1d07", "aa84f34d-11f7-4466-b784-0fdda716ace2", "e1cf1422-1d5f-11e0-b929-000c29ad1d07", "e1dec764-1d5f-11e0-b929-000c29ad1d07" )
+where c.uuid in ("dbf852ab-697f-4c92-a546-74e5301de419","e1df78b2-1d5f-11e0-b929-000c29ad1d07","e1de46a4-1d5f-11e0-b929-000c29ad1d07" )
  and locale ='pt';
 
 
   -- Avaliacao Nutricional : Grau
-select c.concept_id,cn.name from concept c
-inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ("e1dd5ab4-1d5f-11e0-b929-000c29ad1d07" )
- and locale ='pt';
 
 select c.concept_id,cn.name , c.uuid from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id

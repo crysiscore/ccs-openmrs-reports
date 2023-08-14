@@ -279,7 +279,7 @@ FROM
 
 
 
-/************************** FARMAC/Farmácia Privada  165177, ****************************/
+/************************** FARMAC / Farmácia Privada  165177, ****************************/
       left join ( 
         select
         e.patient_id,
