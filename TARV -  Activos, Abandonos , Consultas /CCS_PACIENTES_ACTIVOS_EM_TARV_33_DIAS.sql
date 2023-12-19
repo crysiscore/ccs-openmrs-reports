@@ -53,6 +53,10 @@ Change Date: 12/05/2023
 Change Reason: Change request
               -  Criterios do CDC
               -  Inclusao de pacientes transferidos com levantamento actualizado
+
+Change Date: 12/12/2023
+Change Reason: Change request
+              -  Rastreio de ITS
 */
 
 
@@ -92,6 +96,8 @@ FROM
 			escola.nivel_escolaridade,
 			telef.value AS telefone,
             regime.ultimo_regime,
+            its.its,
+              DATE_FORMAT(its.encounter_datetime,'%d/%m/%Y')  AS data_rastreio_its,
 			marcado_tb.tratamento_tb,
 			DATE_FORMAT(  marcado_tb.data_marcado_tb , '%d/%m/%Y') AS data_marcado_tb,
             DATE_FORMAT(regime.data_regime,'%d/%m/%Y') AS data_regime,
@@ -113,6 +119,7 @@ FROM
             DATE_FORMAT(mastercardFAPSS.dataRegisto,'%d/%m/%Y') AS  data_ult_vis_apss,
             DATE_FORMAT(mastercardFAPSS.value_datetime,'%d/%m/%Y')  AS  data_prox_apss,
 			DATE_FORMAT( ult_levant_master_card.data_ult_lev_master_card,'%d/%m/%Y')  AS data_ult_lev_master_card ,
+            DATE_FORMAT(ult_ped_cv.data_pedido_cv,'%d/%m/%Y') AS data_pedido_cv,
             conset.consentimento,
             revelacao.estado AS estado_revelacao,
 			IF(gaaac.member_id IS NULL,'NÃO','SIM') emgaac,
@@ -666,7 +673,20 @@ FROM
             AND o.voided = 0
             AND o.concept_id = 23951
     GROUP BY patient_id) tb_lam ON tb_lam.patient_id = inicio_real.patient_id
-
+  /**  ****************	Ultimo Pedido de CV ba ficha clinica **************************** **/
+       LEFT JOIN (
+         select p.patient_id, max(e.encounter_datetime) data_pedido_cv
+         from patient p
+                  inner join encounter e on p.patient_id = e.patient_id
+                  inner join obs pedido on pedido.encounter_id = e.encounter_id
+         where p.voided = 0
+           and e.voided = 0
+           and pedido.voided = 0
+           and pedido.concept_id = 23722
+           and pedido.value_coded = 856
+           and e.encounter_type in (6, 9)
+           and e.location_id=:location
+         group by p.patient_id) ult_ped_cv ON ult_ped_cv.patient_id =  inicio_real.patient_id
     /************************* Crag **********************************************/
     LEFT JOIN (SELECT
         e.patient_id,
@@ -1207,7 +1227,38 @@ GROUP BY visita2.patient_id
 			WHERE o.concept_id=1443 AND o.voided=0 AND e.encounter_datetime=ultimavisita_escolaridade.encounter_datetime AND
 			e.encounter_type =53 AND e.location_id=:location
 		) escola ON escola.patient_id=inicio_real.patient_id
+        /** **************************** ITS concept_id=174 ********************************************** */
+
+left join (
+
+SELECT 	e.patient_id,
+				CASE o.value_coded
+				  when	12611 then 'Transtorno inflamatório do escroto'
+                  when  6747  then   'Granuloma inguinal'
+                  when  223   then   'SIFILIS'
+                  when  864   then   'ULCERAS GENETAIS'
+                  when  902   then   'DOENCA INFLAMATORIA PELVICA'
+                  when  5993  then   'LEUCORREIAS'
+                  when  5993  then   'CORRIMENTO'
+                  when  5995  then   'CORRIMENTO URETRAL'
+                  when  5995  then   'Secreção uretra'
+				ELSE '' END AS its,
+                e.encounter_datetime
+                FROM encounter e INNER JOIN
+                ( SELECT e.patient_id, MAX(encounter_datetime) AS data_ult_tipo_dis
+					FROM 	obs o
+					INNER JOIN encounter e ON o.encounter_id=e.encounter_id
+					WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id = 174 AND o.location_id=:location
+					GROUP BY patient_id ) ult_its
+					ON e.patient_id =ult_its.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	e.encounter_type IN (6,9)
+             AND ult_its.data_ult_tipo_dis = e.encounter_datetime
+             AND o.voided=0 AND o.concept_id = 174 AND o.location_id=:location
+             GROUP BY patient_id
+) its on its.patient_id = inicio_real.patient_id
                 /** ************************** Profilaxia CTZ  6121 ********************************************** **/
+
         LEFT JOIN
 		(
                 SELECT e.patient_id,
@@ -1306,4 +1357,3 @@ GROUP BY visita2.patient_id
 
 ) activos
 GROUP BY patient_id
-

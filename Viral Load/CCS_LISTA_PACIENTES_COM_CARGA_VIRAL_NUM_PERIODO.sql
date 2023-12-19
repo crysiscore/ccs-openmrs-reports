@@ -207,7 +207,7 @@ left join (
 
 
 
-		/* ******************************* data e regime da segunda linha consulta **************************** */
+		/* ******************************* data e regime da segunda  consulta **************************** */
         left join (
 
 
