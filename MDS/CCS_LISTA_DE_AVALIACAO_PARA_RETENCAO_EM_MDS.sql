@@ -6,7 +6,8 @@ set :modelo := 'Paragem unica no SAAJ';
 
 SELECT *
 FROM
-(SELECT 	inicio_real.patient_id,
+( SELECT
+            inicio_real.patient_id,
 			CONCAT(pid.identifier,' ') AS NID,
             CONCAT( IFNULL(pn.given_name,''),' ', IFNULL(pn.middle_name,''),' ', IFNULL(pn.family_name,'')) AS 'NomeCompleto',
 			p.gender,

@@ -1,8 +1,12 @@
 select *
 from
 	(select 	inscricao.patient_id,
-			inscricao.data_abertura,
+			  DATE_FORMAT(inscricao.data_abertura, '%d/%m/%Y') AS data_abertura,
 			pe.gender,
+			if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%'), '' )
+			 ) AS cd4,
+			if(cd4.encounter_datetime is not null , DATE_FORMAT(cd4.encounter_datetime,'%d/%m/%Y')  , if(cd4_perc.encounter_datetime is not null, DATE_FORMAT(cd4_perc.encounter_datetime,'%d/%m/%Y') , '' )
+			 ) AS data_cd4,
 			pe.dead,
 			pe.death_date,
 			timestampdiff(year,pe.birthdate,inscricao.data_abertura) idade_abertura,
@@ -17,9 +21,9 @@ from
 			transferido.data_transferido_de,
 			if(transferido.program_id is null,null,if(transferido.program_id=1,'PRE-TARV','TARV')) as transferido_de,
 			inicio_real.data_inicio,
-			estadio.data_estadio,
+			 DATE_FORMAT(estadio.data_estadio, '%d/%m/%Y') AS data_estadio,
 			estadio.valor_estadio,
-			seguimento.data_seguimento,
+			 DATE_FORMAT(seguimento.data_seguimento, '%d/%m/%Y') AS  data_seguimento,
 			if(inscrito_cuidado.date_enrolled is null,'NAO','SIM') inscrito_programa,
 			inscrito_cuidado.date_enrolled data_inscricao_programa,
 			proveniencia.referencia,
@@ -171,9 +175,9 @@ from
 						  WHERE		p.voided=0 and e.encounter_type=18 AND e.voided=0 and e.encounter_datetime<=:endDate and e.location_id=:location
 						  GROUP BY 	p.patient_id
 
-						union
+						/*union
 
-						/*Patients with first drugs pick up date set: Recepcao Levantou ARV*/
+						Patients with first drugs pick up date set: Recepcao Levantou ARV
 						Select 	p.patient_id,min(value_datetime) data_inicio
 						from 	patient p
 								inner join encounter e on p.patient_id=e.patient_id
@@ -181,7 +185,7 @@ from
 						where 	p.voided=0 and e.voided=0 and o.voided=0 and e.encounter_type=52 and
 								o.concept_id=23866 and o.value_datetime is not null and
 								o.value_datetime<=:endDate and e.location_id=:location
-						group by p.patient_id
+						group by p.patient_id  */
 
 
 					) inicio
@@ -209,6 +213,49 @@ from
 						o.concept_id=5356 and o.location_id=:location and o.value_coded in (1204,1205,1206,1207)
 				group by d.patient_id
 			)estadio on estadio.patient_id=inscricao.patient_id
+/****************** ****************************  CD4  Absoluto  *****************************************************/
+        LEFT JOIN(
+            SELECT e.patient_id, o.value_numeric,e.encounter_datetime
+            FROM encounter e INNER JOIN
+		    (
+            SELECT 	cd4_max.patient_id, MIN(cd4_max.encounter_datetime) AS encounter_datetime
+            FROM ( SELECT e.patient_id, o.value_numeric , encounter_datetime
+					FROM encounter e
+							INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					WHERE 	e.voided=0  AND e.location_id=:location  AND
+							o.voided=0 AND o.concept_id=1695 AND e.encounter_type IN (6,9,13,53)
+				) cd4_max
+			GROUP BY patient_id ) cd4_temp
+            ON e.patient_id = cd4_temp.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+            WHERE e.encounter_datetime=cd4_temp.encounter_datetime AND
+			e.voided=0  AND  e.location_id=:location  AND
+            o.voided=0 AND o.concept_id = 1695 AND e.encounter_type IN (6,9,13,53)
+			GROUP BY patient_id
+
+		) cd4 ON cd4.patient_id =  inscricao.patient_id
+		/****************** ****************************  CD4  Percentual  *****************************************************/
+        LEFT JOIN(
+            SELECT e.patient_id, o.value_numeric,e.encounter_datetime
+            FROM encounter e INNER JOIN
+		    (
+            SELECT 	cd4_max.patient_id, MIN(cd4_max.encounter_datetime) AS encounter_datetime
+            FROM (
+					SELECT 	 e.patient_id, o.value_numeric , encounter_datetime
+					FROM encounter e
+							INNER JOIN obs o ON o.encounter_id=e.encounter_id
+					WHERE 	e.voided=0  AND  e.location_id=:location  AND
+							o.voided=0 AND o.concept_id=730 AND e.encounter_type in (6,9,13,53)  )cd4_max
+			GROUP BY patient_id ) cd4_temp
+            ON e.patient_id = cd4_temp.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+            WHERE e.encounter_datetime=cd4_temp.encounter_datetime AND
+			e.voided=0  AND  e.location_id=:location  AND
+            o.voided=0 AND o.concept_id =730  AND e.encounter_type in (6,9,13,53)
+			GROUP BY patient_id
+
+		) cd4_perc ON cd4_perc.patient_id =  inscricao.patient_id
+
 			left join
 			(	select patient_id,min(encounter_datetime) data_seguimento
 				from encounter

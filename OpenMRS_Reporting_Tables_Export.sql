@@ -28,3 +28,16 @@ mysqldump  -uesaude -p -h127.0.0.1 -P3306 openmrs reporting_report_design report
 
 -- openmrs 0/04/2023
 mysqldump  -uesaude -p -h127.0.0.1 -P3306 openmrs reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_10_04_2023.sql 
+
+-- openmrs 09/01/2024
+mysqldump  -uslave -p -h127.0.0.1 -P3306 reportsdb reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_09_01_2024.sql 
+
+
+
+-- openmrs 08/02/2024
+mysqldump  -uslave -p -h127.0.0.1 -P3306 xipamanine reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_08_02_2024.sql 
+4nUvt27aZ
+
+-- openmrs 01/04/2024
+mysqldump  -uslave -p -h127.0.0.1 -P3306 xipamanine reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_08_02_2024.sql 
+4nUvt27aZ

@@ -1,4 +1,4 @@
-#SET @row_number = 0, @prev_patient_id = -1;
+SET @row_number = 0, @prev_patient_id = -1;
 select *
 from (select inicio_real.patient_id,
              DATE_FORMAT(inicio_tarv.data_inicio, '%d/%m/%Y')       as data_inicio_tarv,
@@ -33,12 +33,12 @@ from (select inicio_real.patient_id,
                            left join (SELECT patient_id, encounter_datetime as data_apss
                                       FROM (SELECT patient_id,
                                                    encounter_datetime,
-                                                   @row_number := IF(@prev_patient_id = patient_id, @row_number + 1, 1) AS row_number,
+                                                   @row_number := IF(@prev_patient_id = patient_id, @row_number + 1, 1) AS row_counter,
                                                  @prev_patient_id := patient_id
                                             FROM encounter
                                             where encounter_type = 35 and voided = 0 AND encounter_datetime <= :endDate
                                             ORDER BY patient_id, encounter_datetime DESC) ranked
-                                      WHERE row_number <= 6) levantamentos
+                                      WHERE row_counter <= 6) levantamentos
                                      on levantamentos.patient_id = dd.patient_id) fp_levantamentos
             order by patient_id, data_apss desc) inicio_real
 

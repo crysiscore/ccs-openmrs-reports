@@ -319,7 +319,7 @@ SELECT 	e.patient_id,
 					FROM encounter e 
 							INNER JOIN obs o ON o.encounter_id=e.encounter_id
 					WHERE 	e.voided=0  AND  e.location_id=:location  and
-							o.voided=0 AND o.concept_id=5497 AND e.encounter_type =13 ) cd4_max
+							o.voided=0 AND o.concept_id=5497 AND e.encounter_type = 13 ) cd4_max
 			GROUP BY patient_id ) cd4_temp 
             ON e.patient_id = cd4_temp.patient_id
             inner join obs o on o.encounter_id=e.encounter_id 

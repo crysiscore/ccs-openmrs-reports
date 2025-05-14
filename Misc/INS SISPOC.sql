@@ -1,4 +1,5 @@
-
+-- 0111021201/2015/01115
+-- 0111021201/2008/00546
 
 SELECT *
 FROM
@@ -7,31 +8,38 @@ FROM
 			pid.identifier AS NID,
             CONCAT(IFNULL(pn.given_name,''),' ',IFNULL(pn.middle_name,''),' ',IFNULL(pn.family_name,'')) AS 'NomeCompleto',
 			p.gender,
-			DATE_FORMAT(p.birthdate,'%d/%m/%Y') AS birthdate ,
-            ROUND(DATEDIFF(:endDate,p.birthdate)/365) idade_actual,
-            DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') AS data_inicio,
-            IF(DATEDIFF( :endDate, inicio_real.data_fim) >59, 'ABANDONO' , IF(DATEDIFF( :endDate, inicio_real.data_fim) between 28 and 59 , 'FALTOSO', 'ACTIVO')  ) as retencao,
-            if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%'), '' )
-			 ) AS cd4,
-		    if(cd4.encounter_datetime is not null , DATE_FORMAT(cd4.encounter_datetime,'%d/%m/%Y')  , if(cd4_perc.encounter_datetime is not null, DATE_FORMAT(cd4_perc.encounter_datetime,'%d/%m/%Y') , '' )
-			 ) AS data_cd4,
+			DATE_FORMAT(p.birthdate,'%d/%m/%Y')                             AS birthdate ,
+            ROUND(DATEDIFF(:endDate,p.birthdate)/365)                          idade_actual,
+            DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y')                 AS data_inicio,
+            IF(DATEDIFF( :endDate, inicio_real.data_fim) >59, 'ABANDONO' ,
+                IF(DATEDIFF( :endDate, inicio_real.data_fim) between 28 and 59 , 'FALTOSO', 'ACTIVO')  )                                                         as retencao,
+
+             DATEDIFF( :endDate, inicio_real.data_fim) as dias_faltoso,
+             DATE_FORMAT(inicio_real.data_fim,'%d/%m/%Y')                 AS data_fim,
+            if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%'), '' ) ) AS cd4,
+            if(cd4_final.value_numeric is not null , cd4_final.value_numeric , if(cd4_perc_final.value_numeric is not null, concat(cd4_perc_final.value_numeric, '%'), '' ) ) AS cd4_final,
             if( cv_final.valor_comment is not null, concat('Menor (<) que ',cv_final.valor_comment ), if(cv_final.carga_viral_qualitativa is not null,cv_final.carga_viral_qualitativa,cv_final.carga_viral_qualitativa)  ) as carga_viral_qualitativa_final,
-            profilaxia_ctz.estado AS profilaxia_ctz,
-            DATE_FORMAT(cv_final.data_ultima_carga,'%d/%m/%Y') AS data_ult_carga_v ,
-            cv_final.valor_ultima_carga AS carga_viral_numeric_final,
-            cv_final.origem_resultado AS origem_cv_final,
-            transferido.data_estado data_trasnferencia,
-            permanencia_tarv.permanencia saida_tarv,
+             DATE_FORMAT(profilaxia_ctz_inicio.data_profilaxia_inicio, '%d/%m/%Y')  AS  data_ctz_inicio ,
+             DATE_FORMAT(profilaxia_ctz_fim.data_profilaxia_fim, '%d/%m/%Y')  AS data_ctz_fim  ,
+              its.its,
+              inf_oportunistas.outros_diagnosticos,
+              DATE_FORMAT(its.encounter_datetime,'%d/%m/%Y')  AS data_rastreio_its,
+            DATE_FORMAT(cv_final.data_ultima_carga,'%d/%m/%Y')              AS data_ult_carga_v ,
+            cv_final.valor_ultima_carga                                     AS carga_viral_numeric_final,
+            cv_final.origem_resultado                                       AS origem_cv_final,
+             DATE_FORMAT(transferido.data_estado,'%d/%m/%Y')                as data_transferencia,
+            permanencia_tarv.permanencia                                       saida_tarv,
+            estadio_oms.estadio,
             if( cv_inicial.valor_comment is not null, concat('Menor (<) que ',cv_inicial.valor_comment ),
-            if(cv_inicial.carga_viral_qualitativa is not null,cv_inicial.carga_viral_qualitativa,cv_inicial.carga_viral_qualitativa)  ) as carga_viral_qualitativa_inicial,
-            DATE_FORMAT(cv_inicial.data_ultima_carga,'%d/%m/%Y') AS data_inicial_carga_v ,
-            cv_inicial.valor_ultima_carga AS carga_viral_numeric_inicial,
-            cv_inicial.origem_resultado AS origem_cv_inicial,
+            if(cv_inicial.carga_viral_qualitativa is not null,cv_inicial.carga_viral_qualitativa,cv_inicial.carga_viral_qualitativa)  )             as carga_viral_qualitativa_inicial,
+            DATE_FORMAT(cv_inicial.data_ultima_carga,'%d/%m/%Y')            AS data_inicial_carga_v ,
+            cv_inicial.valor_ultima_carga                                   AS carga_viral_numeric_inicial,
+            cv_inicial.origem_resultado                                     AS origem_cv_inicial,
             keypop.populacaochave,
-            regime.ultimo_regime,
+            regime.regime_inicial,
 			marcado_tb.tratamento_tb,
+			risco_adesao.factor_risco,
 			DATE_FORMAT(  marcado_tb.data_marcado_tb , '%d/%m/%Y') AS data_marcado_tb,
-            DATE_FORMAT(regime.data_regime,'%d/%m/%Y') AS data_regime,
             DATE_FORMAT(gravida_real.data_gravida,'%d/%m/%Y') AS data_gravida,
 			DATE_FORMAT(lactante_real.date_enrolled,'%d/%m/%Y') AS data_lactante,
             DATE_FORMAT(ult_fila.encounter_datetime,'%d/%m/%Y') AS data_ult_levantamento,
@@ -229,9 +237,9 @@ FROM
                                                           group by pg.patient_id) max_estado
                                                              inner join patient_program pp on pp.patient_id = max_estado.patient_id
                                                              inner join patient_state ps on ps.patient_program_id =
-                                                                                            pp.patient_program_id and
-                                                                                            ps.start_date =
-                                                                                            max_estado.data_estado
+                    pp.patient_program_id and
+                    ps.start_date =
+                    max_estado.data_estado
                                                     where pp.program_id = 2
                                                       and ps.state = 7
                                                       and pp.voided = 0
@@ -381,7 +389,7 @@ FROM
                 group by patient_id) coorte12meses_final
           where (data_estado is null or (data_estado is not null and data_usar_c > data_estado))
             and date_add(data_usar, interval 90 day) >= :endDate
-)inicio_real
+) inicio_real
 		INNER JOIN person p ON p.person_id=inicio_real.patient_id
 
 		LEFT JOIN
@@ -470,7 +478,7 @@ FROM
 						WHEN 21163 THEN 'AZT+3TC+LPV/r'
 						WHEN 23799 THEN 'TDF+3TC+DTG'
 						WHEN 23800 THEN 'ABC+3TC+DTG'
-						ELSE 'OUTRO' END AS ultimo_regime,
+						ELSE 'OUTRO' END AS regime_inicial,
 						e.encounter_datetime data_regime,
                         o.value_coded
 				FROM 	encounter e
@@ -490,7 +498,100 @@ FROM
 
 			) regime ON regime.patient_id=inicio_real.patient_id
 
+        /** **************************** ITS concept_id=174 ********************************************** */
 
+left join (
+
+SELECT 	e.patient_id,
+				CASE o.value_coded
+				  when	12611 then 'Transtorno inflamatório do escroto'
+                  when  6747  then   'Granuloma inguinal'
+                  when  223   then   'SIFILIS'
+                  when  864   then   'ULCERAS GENETAIS'
+                  when  902   then   'DOENCA INFLAMATORIA PELVICA'
+                  when  5993  then   'LEUCORREIAS'
+                  when  5993  then   'CORRIMENTO'
+                  when  5995  then   'CORRIMENTO URETRAL'
+                  when  5995  then   'Secreção uretra'
+				ELSE '' END AS its,
+                e.encounter_datetime
+                FROM encounter e INNER JOIN
+                ( SELECT e.patient_id, MAX(encounter_datetime) AS data_ult_tipo_dis
+					FROM 	obs o
+					INNER JOIN encounter e ON o.encounter_id=e.encounter_id
+					WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id = 174 AND o.location_id=:location
+					GROUP BY patient_id ) ult_its
+					ON e.patient_id =ult_its.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	e.encounter_type IN (6,9)
+             AND ult_its.data_ult_tipo_dis = e.encounter_datetime
+             AND o.voided=0 AND o.concept_id = 174 AND o.location_id=:location
+             GROUP BY patient_id
+) its on its.patient_id = inicio_real.patient_id
+	     /** **************************** ITS OUTROS DIAGNOSTICOS =1406 ********************************************** */
+
+left join (
+
+SELECT 	e.patient_id,
+				CASE o.value_coded
+				WHEN 155 THEN  'EPILEPSIA'
+                WHEN 5018 THEN  'DIARREIA CRÓNICA > 1 MÊS'
+                WHEN 5340 THEN  'CANDIDÍASE ESOFÁGICA'
+                WHEN 14656 THEN  'Caquexia'
+                WHEN 165332 THEN  'Criptococcemia'
+                WHEN 879 THEN  'PRURIDO'
+                WHEN 892 THEN  'VARICELA'
+                WHEN 6783 THEN  'Estomatite ulcerativa necrotizante'
+                WHEN 6838 THEN  'Encefalite australiana'
+                WHEN 6990 THEN  'Doença pelo HIV resultando em encefalopatia'
+                WHEN 13624 THEN  'Diabetes mellitus neonatal'
+                WHEN 7180 THEN  'Toxoplasmose'
+                WHEN 3 THEN  'ANEMIA'
+                WHEN 42 THEN  'TUBERCULOSE PULMONAR'
+                WHEN 43 THEN  'PNEUMONIA'
+                WHEN 55 THEN  'INFECCAO DO TRATO URINARIO'
+                WHEN 60 THEN  'MENINGITE   NSA'
+                WHEN 106 THEN  'CONSTIPACAO COMUM'
+                WHEN 119 THEN  'DERMATITE'
+                WHEN 126 THEN  'GENGIVITE'
+                WHEN 193 THEN  'BRONCOPNEUMONIA'
+                WHEN 197 THEN  'GASTROENTERITE'
+                WHEN 218 THEN  'OTITE EXTERNA'
+                WHEN 222 THEN  'SINUSITE'
+                WHEN 507 THEN  'SARCOMA DE KAPOSI'
+                WHEN 835 THEN  'TINHA DO CORPO'
+                WHEN 835 THEN  'DOENCA DA PELE'
+                WHEN 835 THEN  'MICOSE'
+                WHEN 835 THEN  'TINHA'
+                WHEN 836 THEN  'HERPES ZOSTER'
+                WHEN 836 THEN  'ZOSTER'
+                WHEN 836 THEN  'COBREIRO'
+                WHEN 836 THEN  'ZOLSTER'
+                WHEN 903 THEN  'HIPERTENSAO'
+                WHEN 1212 THEN  'MOLUSCO CONTAGIOSO'
+                WHEN 1294 THEN  'MENINGITE  CRYPTOCOCAL'
+                WHEN 1570 THEN  'Cancro do Colo do útero'
+                WHEN 5042 THEN  'TUBERCULOSE EXTRAPULMONAR'
+                WHEN 5334 THEN  'CANDIDIASE ORAL'
+                WHEN 5334 THEN  'AFTA'
+                WHEN 5344 THEN  'HERPES SIMPLES > 1 MÊS OU VISCERAL'
+                WHEN 5945 THEN  'FEBRE'
+
+				ELSE '' END AS outros_diagnosticos,
+                e.encounter_datetime
+                FROM encounter e INNER JOIN
+                ( SELECT e.patient_id, MAX(encounter_datetime) AS data_ult_tipo_dis
+					FROM 	obs o
+					INNER JOIN encounter e ON o.encounter_id=e.encounter_id
+					WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id = 1406 AND o.location_id=:location
+					GROUP BY patient_id ) ult_its
+					ON e.patient_id =ult_its.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	e.encounter_type IN (6,9)
+             AND ult_its.data_ult_tipo_dis = e.encounter_datetime
+             AND o.voided=0 AND o.concept_id = 1406 AND o.location_id=:location
+             GROUP BY patient_id
+) inf_oportunistas on inf_oportunistas.patient_id = inicio_real.patient_id
 		LEFT JOIN
 		(SELECT ultimavisita.patient_id,ultimavisita.encounter_datetime,o.value_datetime,e.location_id
 			FROM
@@ -565,7 +666,7 @@ FROM
 		group by patient_id   ***/
 	) gravida_real ON gravida_real.patient_id=inicio_real.patient_id
 
-	  /*************************                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           *********************************************/
+	  /*************************                                           *********************************************/
      LEFT JOIN  (	SELECT patient_id,  date_enrolled
 		FROM
 			(SELECT p.patient_id,MAX(obs_datetime) date_enrolled
@@ -581,27 +682,6 @@ FROM
 
 	) lactante_real ON lactante_real.patient_id=inicio_real.patient_id
 
-        /** ************************** LinhaTerapeutica concept_id = 21151  * ********************************************** **/
-        LEFT JOIN
-		(
-SELECT 	e.patient_id,
-				CASE o.value_coded
-					WHEN 21148  THEN 'SEGUNDA LINHA'
-					WHEN 21149  THEN 'TERCEIRA LINHA'
-					WHEN 21150  THEN 'PRIMEIRA LINHA'
-				ELSE '' END AS linhat,
-                encounter_datetime AS data_ult_linha
-				FROM 	(
-							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_ult_linhat
-							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
-							WHERE e.encounter_type IN (6,9,53) AND e.voided=0 AND o.voided=0 AND o.concept_id = 21151
-							GROUP BY patient_id
-				) ult_linhat
-			INNER JOIN encounter e ON e.patient_id=ult_linhat.patient_id
-            INNER JOIN obs o ON o.encounter_id=e.encounter_id
-			WHERE 	e.encounter_type IN (6,9,53) AND ult_linhat.data_ult_linhat =e.encounter_datetime AND e.voided=0 AND o.voided=0 AND o.concept_id = 21151
-            GROUP BY patient_id
-		) linha_terapeutica ON linha_terapeutica.patient_id=inicio_real.patient_id
 
         /****************** ****************************  CD4  Absoluto  inicial *****************************************************/
         LEFT JOIN(
@@ -866,21 +946,21 @@ LEFT JOIN (
 			 GROUP BY e.patient_id
             ) ult_seguimento ON ult_seguimento.patient_id = inicio_real.patient_id
 
-                /** ************************** Profilaxia CTZ  6121 ********************************************** **/
+                /** ************************** Profilaxia CTZ  6121 : inicio ********************************************** **/
 
         LEFT JOIN
 		(
                 SELECT e.patient_id,
-                ficha_seguimento.data_ult_seguimento,
+                ficha_seguimento.data_ult_seguimento data_profilaxia_inicio,
 				CASE o.value_coded
 				WHEN 1256 THEN 'NOVO'
 				WHEN 1257 THEN 'CONTINUA'
 				WHEN 1267 THEN 'TERMINA'
                 WHEN 1065 THEN 'SIM'
-                WHEN 1066 THEN 'NAO'
+                WHEN 1067 THEN 'Completo'
 			    ELSE '' END AS estado
 				FROM (
-							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_ult_seguimento
+							SELECT 	e.patient_id,MIN(encounter_datetime) AS data_ult_seguimento
 							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
 							WHERE e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id = 6121 AND e.form_id=163
                             AND e.location_id=:location
@@ -892,18 +972,46 @@ LEFT JOIN (
 			WHERE 	e.encounter_type IN (6,9) AND ficha_seguimento.data_ult_seguimento =e.encounter_datetime AND e.voided=0 AND o.voided=0 AND o.concept_id = 6121
                      AND e.location_id=:location
             GROUP BY patient_id
-		) profilaxia_ctz ON profilaxia_ctz.patient_id=inicio_real.patient_id
-		     /* *********************** estadio OMS concept_id = 5356  * ********************************************** **/
+		) profilaxia_ctz_inicio ON profilaxia_ctz_inicio.patient_id=inicio_real.patient_id
+
+		        /** ************************** Profilaxia CTZ  6121 : FIM ********************************************** **/
+
+        LEFT JOIN
+		(
+                SELECT e.patient_id,
+                ficha_seguimento.data_ult_seguimento as data_profilaxia_fim,
+				CASE o.value_coded
+				WHEN 1256 THEN 'NOVO'
+				WHEN 1257 THEN 'CONTINUA'
+				WHEN 1267 THEN 'TERMINA'
+                WHEN 1065 THEN 'SIM'
+                WHEN 1067 THEN 'Completo'
+			    ELSE '' END AS estado
+				FROM (
+							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_ult_seguimento
+							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
+							WHERE e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id = 6121 AND e.form_id=163
+                            AND e.location_id=:location and o.value_coded=1067
+							GROUP BY patient_id
+				      )  ficha_seguimento
+
+			INNER JOIN encounter e ON e.patient_id=ficha_seguimento.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	e.encounter_type IN (6,9) AND ficha_seguimento.data_ult_seguimento =e.encounter_datetime AND e.voided=0 AND o.voided=0 AND o.concept_id = 6121
+                     AND e.location_id=:location
+            GROUP BY patient_id
+		) profilaxia_ctz_fim ON profilaxia_ctz_fim.patient_id=inicio_real.patient_id
+
+	   /* *********************** estadio OMS concept_id = 5356  * ********************************************** **/
         LEFT JOIN
 		(
         			    SELECT e.patient_id,
-						 o.value_coded AS estadio,
                          case o.value_coded
                          when 1204 then 'ESTADIO I OMS'
                          when 1205 then 'ESTADIO II OMS'
                          when 1206 then 'ESTADIO III OMS'
                          when 1207 then 'ESTADIO IV OMS'
-                         end as estadio_om,
+                         end as estadio,
                   	     e.encounter_datetime as data_linhat
 			FROM encounter e
                INNER JOIN (
@@ -984,9 +1092,9 @@ LEFT JOIN (
                                                           group by pg.patient_id) max_estado
                                                              inner join patient_program pp on pp.patient_id = max_estado.patient_id
                                                              inner join patient_state ps on ps.patient_program_id =
-                                                                                            pp.patient_program_id and
-                                                                                            ps.start_date =
-                                                                                            max_estado.data_estado
+                    pp.patient_program_id and
+                    ps.start_date =
+                    max_estado.data_estado
                                                     where pp.program_id = 2
                                                       and ps.state = 7
                                                       and pp.voided = 0

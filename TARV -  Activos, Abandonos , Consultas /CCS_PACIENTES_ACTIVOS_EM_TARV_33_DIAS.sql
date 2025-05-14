@@ -35,28 +35,41 @@ Change Reason: Bug fix
 -- data gravida busca data de rastreio (Marcia Jasse)
 
 Change Date: 08/08/2022
+Change by: Agnaldo  Samuel
 Change Reason: Bug fix
               -  Correcao no criterio de exclusao ( Pacientes transferidos da FC e cartao de visita).
 			  -  Revisao da sub-consulta que verifica a saida no programa TARV-Tratamento (Visao geral OpenMRS)
 
 Change Date: 26/01/2021
+Change by: Agnaldo  Samuel
 Change Reason: Change request
               -  Correcao no criterio de exclusao ( Pacientes transferidos da FC e cartao de visita).
 			  -  Revisao da sub-consulta que verifica a saida no programa TARV-Tratamento (Visao geral OpenMRS)
               -
 Change Date: 26/02/2023
+Change by: Agnaldo  Samuel
 Change Reason: Change request
               -  Fonte de Regime T.  passa a ser FC
-              - Remocao do campo no NID
+              -  Remocao do campo no NID
 
 Change Date: 12/05/2023
+Change by: Agnaldo  Samuel
 Change Reason: Change request
               -  Criterios do CDC
               -  Inclusao de pacientes transferidos com levantamento actualizado
 
 Change Date: 12/12/2023
+Change by: Agnaldo  Samuel
 Change Reason: Change request
               -  Rastreio de ITS
+              - data de  Inicio TPT
+
+Change Date: 05/05/2025
+Change by: Agnaldo  Samuel
+Change Reason: Change request ( Mauricio Timecane)
+            - Incluir o tipo de grupo de apoio;
+            - Incluir o resultado de rastreio de CaCU (a data de rastreio já existe)
+            - Criar uma aba e incluir os resultados de tensão arterial das 3 últimas consultas (máximo e minimo);
 */
 
 
@@ -80,6 +93,7 @@ FROM
              if( cv.valor_comment is not null, concat('Menor (<) que ',cv.valor_comment ), if(cv.carga_viral_qualitativa is not null,cv.carga_viral_qualitativa,cv.carga_viral_qualitativa)  ) as carga_viral_qualitativa,
             cv.valor_comment,
              profilaxia_ctz.estado AS profilaxia_ctz,
+             DATE_FORMAT(in_3hp_tpi.data_inicio_tpt,'%d/%m/%Y') AS data_inicio_tpt,
             DATE_FORMAT(cv.data_ultima_carga,'%d/%m/%Y') AS data_ult_carga_v ,
             cv.valor_ultima_carga AS carga_viral_numeric,
             cv.origem_resultado AS origem_cv,
@@ -122,7 +136,9 @@ FROM
             DATE_FORMAT(ult_ped_cv.data_pedido_cv,'%d/%m/%Y') AS data_pedido_cv,
             conset.consentimento,
             revelacao.estado AS estado_revelacao,
-			IF(gaaac.member_id IS NULL,'NÃO','SIM') emgaac,
+            rastreio_ccu.resultado_via,
+            rastreio_hpv.resultado_hpv,
+			-- IF(gaaac.member_id IS NULL,'NÃO','SIM') emgaac,
             pad3.county_district AS 'Distrito',
 			pad3.address2 AS 'Padministrativo',
 			pad3.address6 AS 'Localidade',
@@ -132,18 +148,22 @@ FROM
 
 	FROM (select patient_id, data_inicio
           from (select inicio_fila_seg_prox.*,
-                       GREATEST(COALESCE(data_fila, data_seguimento), COALESCE(data_seguimento, data_fila))    data_usar_c,
-                       GREATEST(COALESCE(data_proximo_lev, data_proximo_seguimento, data_recepcao_levantou30),
+                       -- GREATEST(COALESCE(data_fila, data_seguimento), COALESCE(data_seguimento, data_fila))    data_usar_c,
+                           data_fila    data_usar_c,
+                       /* GREATEST(COALESCE(data_proximo_lev, data_proximo_seguimento, data_recepcao_levantou30),
                                 COALESCE(data_proximo_seguimento, data_proximo_lev, data_recepcao_levantou30),
-                                COALESCE(data_recepcao_levantou30, data_proximo_seguimento, data_proximo_lev)) data_usar
+                                COALESCE(data_recepcao_levantou30, data_proximo_seguimento, data_proximo_lev)) data_usar*/
+             GREATEST(COALESCE(data_proximo_lev, data_recepcao_levantou30),
+                                COALESCE( data_proximo_lev, data_recepcao_levantou30),
+                                COALESCE(data_recepcao_levantou30, data_proximo_lev)) data_usar
                 from (select inicio_fila_seg.*,
                              max(obs_fila.value_datetime)                      data_proximo_lev,
-                             max(obs_seguimento.value_datetime)                data_proximo_seguimento,
+                             /*max(obs_seguimento.value_datetime)                data_proximo_seguimento, */
                              date_add(data_recepcao_levantou, interval 30 day) data_recepcao_levantou30
                       from (select inicio.*,
                                    saida.data_estado,
                                    max_fila.data_fila,
-                                   max_consulta.data_seguimento,
+                                   /* max_consulta.data_seguimento, */
                                    max_recepcao.data_recepcao_levantou
                             from (select patient_id, min(data_inicio) data_inicio
                                   from (select p.patient_id, min(e.encounter_datetime) data_inicio
@@ -417,7 +437,7 @@ FROM
                                     and e.location_id = :location
                                     and e.encounter_datetime <= :endDate
                                   group by p.patient_id) max_fila on inicio.patient_id = max_fila.patient_id
-                                     left join
+                                   /*  left join
                                  (select p.patient_id, max(encounter_datetime) data_seguimento
                                   from patient p
                                            inner join person pe on pe.person_id = p.patient_id
@@ -428,7 +448,7 @@ FROM
                                     and e.encounter_type in (6, 9)
                                     and e.location_id = :location
                                     and e.encounter_datetime <= :endDate
-                                  group by p.patient_id) max_consulta on inicio.patient_id = max_consulta.patient_id
+                                  group by p.patient_id) max_consulta on inicio.patient_id = max_consulta.patient_id */
                                      left join
                                  (select p.patient_id, max(value_datetime) data_recepcao_levantou
                                   from patient p
@@ -452,12 +472,12 @@ FROM
                                and obs_fila.obs_datetime = inicio_fila_seg.data_fila
                                and obs_fila.concept_id = 5096
                                and obs_fila.location_id = :location
-                               left join
+                        /*   left join
                            obs obs_seguimento on obs_seguimento.person_id = inicio_fila_seg.patient_id
                                and obs_seguimento.voided = 0
                                and obs_seguimento.obs_datetime = inicio_fila_seg.data_seguimento
                                and obs_seguimento.concept_id = 1410
-                               and obs_seguimento.location_id = :location
+                               and obs_seguimento.location_id = :location */
                       group by inicio_fila_seg.patient_id) inicio_fila_seg_prox
                 group by patient_id) coorte12meses_final
           where (data_estado is null or (data_estado is not null and data_usar_c > data_estado))
@@ -742,11 +762,64 @@ FROM
 			e.encounter_type IN (6,9,34,35)  AND e.location_id=:location
 			GROUP BY e.patient_id
 		) keypop ON keypop.patient_id=inicio_real.patient_id
+  /************************** Resultado da VIA-CCI concept_id = 2094 ****************************/
+               LEFT JOIN
+		(
+SELECT ultimavisita_rastreio_ccu.patient_id,ultimavisita_rastreio_ccu.encounter_datetime data_rastreio,
+        CASE o.value_coded
+                when 5622 then 'OUTRO, NAO CODIFICADO'
+                when 664 then 'NEGATIVO'
+                when 703 then 'POSITIVO'
+                when 2093 then 'SUSPEITO DE CANCRO'
 
-		LEFT JOIN
+				ELSE '' END AS resultado_via
+			FROM
+
+			(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime, e.encounter_type
+				FROM 	encounter e
+                        INNER JOIN obs o ON o.encounter_id =e.encounter_id
+				       AND 	e.voided=0  AND o.voided=0   AND o.concept_id=2094  AND e.encounter_type IN (6,28)  AND e.location_id=:location
+				GROUP BY e.patient_id
+			) ultimavisita_rastreio_ccu
+			INNER JOIN encounter e ON e.patient_id=ultimavisita_rastreio_ccu.patient_id
+			INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE o.concept_id=2094 AND o.voided=0 AND e.encounter_datetime=ultimavisita_rastreio_ccu.encounter_datetime AND
+			e.encounter_type IN (6,28)  AND e.location_id=:location
+			GROUP BY e.patient_id
+
+		) rastreio_ccu ON rastreio_ccu.patient_id=inicio_real.patient_id
+
+		      /************************** Resultado da HPV concept_id = 165436 ****************************/
+               LEFT JOIN
+		(
+SELECT ultimavisita_rastreio_hpv.patient_id,ultimavisita_rastreio_hpv.encounter_datetime data_rastreio,
+        CASE o.value_coded
+                when 5622 then 'OUTRO, NAO CODIFICADO'
+                when 664 then 'NEGATIVO'
+                when 703 then 'POSITIVO'
+
+				ELSE '' END AS resultado_hpv
+			FROM
+
+			(	SELECT 	e.patient_id,MAX(encounter_datetime) AS encounter_datetime, e.encounter_type
+				FROM 	encounter e
+                        INNER JOIN obs o ON o.encounter_id =e.encounter_id
+				       AND 	e.voided=0  AND o.voided=0   AND o.concept_id=165436  AND e.encounter_type IN (6,28)  AND e.location_id=:location
+				GROUP BY e.patient_id
+			) ultimavisita_rastreio_hpv
+			INNER JOIN encounter e ON e.patient_id=ultimavisita_rastreio_hpv.patient_id
+			INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE o.concept_id=165436 AND o.voided=0 AND e.encounter_datetime=ultimavisita_rastreio_hpv.encounter_datetime AND
+			e.encounter_type IN (6,28)  AND e.location_id=:location
+			GROUP BY e.patient_id
+
+		) rastreio_hpv ON rastreio_hpv.patient_id=inicio_real.patient_id
+
+	      /************  GAAC  *********************/
+		/*LEFT JOIN
 		(
 			SELECT DISTINCT member_id FROM gaac_member WHERE voided=0
-		) gaaac ON gaaac.member_id=inicio_real.patient_id
+		) gaaac ON gaaac.member_id=inicio_real.patient_id */
 
         /************  Peso  *********************/
         LEFT JOIN
@@ -764,7 +837,8 @@ FROM
 			WHERE o.concept_id=5089 AND o.voided=0 AND e.encounter_datetime=ultimavisita.encounter_datetime AND
 			e.encounter_type IN (6,9) AND e.location_id=:location
 		) weight ON weight.patient_id=inicio_real.patient_id
-               /************  Altura  *********************/
+
+   /****************************************  Altura  *****************************************************/
 		 LEFT JOIN
 		(SELECT ultimavisita_peso.patient_id,ultimavisita_peso.encounter_datetime,o.value_numeric AS altura
 			FROM
@@ -781,7 +855,7 @@ FROM
 			e.encounter_type IN (6,9) AND e.location_id=:location
 		) height ON height.patient_id=inicio_real.patient_id
 
-                       /************  Hemoglobina  *********************/
+   /****************************************  Hemoglobina  **************************************************/
 		LEFT JOIN
 		(SELECT ultimavisita_hemoglobina.patient_id,ultimavisita_hemoglobina.encounter_datetime,o.value_numeric hemoglobina
 			FROM
@@ -798,7 +872,7 @@ FROM
 			e.encounter_type IN (6,9) AND e.location_id=:location
 		) hemog ON hemog.patient_id=inicio_real.patient_id
 
-   /*****************************   gravida nos ultimos 12 mesmes   *************************************************/
+   /*****************************   gravida nos ultimos 12 meses   *************************************************/
    LEFT JOIN
 	(	SELECT patient_id, data_gravida
 		FROM
@@ -823,7 +897,7 @@ FROM
 		group by patient_id   ***/
 	) gravida_real ON gravida_real.patient_id=inicio_real.patient_id
 
-	  /************************* LACTANTES *********************************************/
+  /*******************************              LACTANTES              *********************************************/
      LEFT JOIN  (	SELECT patient_id,  date_enrolled
 		FROM
 			(SELECT p.patient_id,MAX(obs_datetime) date_enrolled
@@ -839,13 +913,13 @@ FROM
 
 	) lactante_real ON lactante_real.patient_id=inicio_real.patient_id
 
-			/** **************************************** Tipo dispensa  concept_id = 23739 **************************************** **/
+	/** **************************************** Tipo dispensa  concept_id = 23739 **************************************** **/
     LEFT JOIN
 		( SELECT 	e.patient_id,
 				CASE o.value_coded
 					WHEN 23888  THEN 'DISPENSA SEMESTRAL'
-					WHEN 1098 THEN 'DISPENSA MENSAL'
-					WHEN 23720 THEN 'DISPENSA TRIMESTRAL'
+					WHEN 1098 THEN   'DISPENSA MENSAL'
+					WHEN 23720 THEN  'DISPENSA TRIMESTRAL'
 				ELSE '' END AS tipodispensa,
                 e.encounter_datetime
                 FROM encounter e INNER JOIN
@@ -959,7 +1033,109 @@ SELECT 	e.patient_id,
 			e.encounter_type IN (6,9) AND e.location_id=:location
 		) ult_mestr ON ult_mestr.patient_id=inicio_real.patient_id
 
+          /**********************  Inicio de TPI  ********************************************************************/
+		    LEFT JOIN
+              (select inicio_tpt.patient_id, min(inicio_tpt.data_inicio_tpi) data_inicio_tpt
 
+                       from (
+                                /*	Inicio  3HP na Ficha Clinica, Seguimento e Resumo	     */
+                                select p.patient_id, min(estadoProfilaxia.obs_datetime) data_inicio_tpi
+                                from patient p
+                                inner join encounter e on p.patient_id = e.patient_id
+                                inner join obs profilaxia3HP on profilaxia3HP.encounter_id = e.encounter_id
+                                inner join obs estadoProfilaxia on estadoProfilaxia.encounter_id = e.encounter_id
+                                  where p.voided = 0
+                                  and e.voided = 0
+                                  and profilaxia3HP.voided = 0
+                                  and estadoProfilaxia.voided = 0
+                                  and profilaxia3HP.concept_id = 23985
+                                  and profilaxia3HP.value_coded = 23954
+                                  and estadoProfilaxia.concept_id = 165308
+                                  and estadoProfilaxia.value_coded = 1256
+                                  and e.encounter_type in (6, 9, 53)
+                                  and e.location_id = :location
+                                  and estadoProfilaxia.obs_datetime between (:endDate - interval 48 month) and :endDate
+                                group by p.patient_id
+                                union
+                                /* Inicio Usando Outras prescrições DT-3HP na Ficha Clinica  */
+                                select p.patient_id, min(outrasPrescricoesDT3HP.obs_datetime) data_inicio_tpi
+                                from patient p
+                                         inner join encounter e on p.patient_id = e.patient_id
+                                         inner join obs outrasPrescricoesDT3HP
+                                                    on outrasPrescricoesDT3HP.encounter_id = e.encounter_id
+                                where p.voided = 0
+                                  and e.voided = 0
+                                  and outrasPrescricoesDT3HP.voided = 0
+                                  and outrasPrescricoesDT3HP.obs_datetime between (:endDate - interval 48 month) and :endDate
+                                  and outrasPrescricoesDT3HP.concept_id = 1719
+                                  and outrasPrescricoesDT3HP.value_coded = 165307
+                                  and e.encounter_type in (6)
+                                  and e.location_id = :location
+                                group by p.patient_id
+                                union
+                                  /*
+                                  Patients who have Regime de TPT with the values “3HP or 3HP +
+                                  Piridoxina” and “Seguimento de tratamento TPT” = (‘Inicio’ or ‘Re-Inicio’)
+                                  marked on Ficha de Levantamento de TPT (FILT)  during the previous
+                                  reporting period (3HP Start Date)
+                                  */
+                                 select p.patient_id, min(seguimentoTPT.obs_datetime) data_inicio_tpi
+                                            from patient p
+                                                     inner join encounter e on p.patient_id = e.patient_id
+                                                     inner join obs regime3HP on regime3HP.encounter_id = e.encounter_id
+                                                     inner join obs seguimentoTPT on seguimentoTPT.encounter_id = e.encounter_id
+                                            where e.voided = 0
+                                              and p.voided = 0
+                                              and seguimentoTPT.obs_datetime between (:endDate - interval 48 month) and :endDate
+                                              and regime3HP.voided = 0
+                                              and regime3HP.concept_id = 23985
+                                              and regime3HP.value_coded in (23954, 23984)
+                                              and e.encounter_type = 60
+                                              and e.location_id = :location
+                                              and seguimentoTPT.voided = 0
+                                              and seguimentoTPT.concept_id = 23987
+                                              and seguimentoTPT.value_coded in (1256, 1705)
+                                            group by p.patient_id
+
+                                            union
+
+                                                                                /*
+                                                    Patients who have  (Profilaxia
+                                                    TPT with the value “Isoniazida (INH)” and Estado da Profilaxia with the
+                                                    value “Inicio (I)”) marked on Ficha Clínica , Ficha Seguimento and Ficha Resumo
+                                             */
+
+                                            select p.patient_id, min(obsInicioINH.obs_datetime) data_inicio_tpi
+                                            from patient p
+                                                inner join encounter e on p.patient_id = e.patient_id
+                                                inner join obs o on o.encounter_id = e.encounter_id
+                                                inner join obs obsInicioINH on obsInicioINH.encounter_id = e.encounter_id
+                                            where e.voided=0 and p.voided=0 and o.voided=0 and e.encounter_type in (6,9,53)and o.concept_id=23985 and o.value_coded=656
+                                                and obsInicioINH.concept_id=165308 and obsInicioINH.value_coded=1256 and obsInicioINH.voided=0
+                                                and obsInicioINH.obs_datetime between (:endDate - interval 10 year) and :endDate and  e.location_id=:location
+                                                group by p.patient_id
+
+                                            union
+
+                                            /*
+                                             *   Patients who have Regime de TPT with the values (“Isoniazida” or
+                                                    “Isoniazida + Piridoxina”) and “Seguimento de tratamento TPT” = (‘Inicio’ or
+                                                    ‘Re-Inicio’) marked on Ficha de Levantamento de TPT (FILT) during the
+                                                    previous reporting period (INH Start Date)
+                                             * */
+                                            select p.patient_id,min(seguimentoTPT.obs_datetime) data_inicio_tpi
+                                            from	patient p
+                                                inner join encounter e on p.patient_id=e.patient_id
+                                                inner join obs o on o.encounter_id=e.encounter_id
+                                                inner join obs seguimentoTPT on seguimentoTPT.encounter_id=e.encounter_id
+                                            where e.voided=0 and p.voided=0 and seguimentoTPT.obs_datetime between (:endDate - interval 10 year ) and :endDate
+                                                and seguimentoTPT.voided =0 and seguimentoTPT.concept_id = 23987 and seguimentoTPT.value_coded in (1256,1705)
+                                                and o.voided=0 and o.concept_id=23985 and o.value_coded in (656,23982) and e.encounter_type=60 and  e.location_id=:location
+                                                group by p.patient_id
+
+
+                   ) inicio_tpt
+                       group by inicio_tpt.patient_id)  in_3hp_tpi  ON in_3hp_tpi.patient_id=inicio_real.patient_id
           /***********************   Factores de risco de adesao *****************************************************/
           LEFT JOIN (SELECT
 						e.patient_id,
@@ -1284,6 +1460,44 @@ SELECT 	e.patient_id,
                      AND e.location_id=:location
             GROUP BY patient_id
 		) profilaxia_ctz ON profilaxia_ctz.patient_id=inicio_real.patient_id
+
+/* ******************************* Grupo de Apoio **************************** */
+	Left join (
+                SELECT e.patient_id,
+                ficha_seguimento.data_ult_seguimento,
+				CASE  o.value_coded
+				    when 1256 then 'INICIA'
+				    when 1257 then 'CONTINUA'
+                    when 1267 then 'TERMINA'
+                    ELSE '' END AS estado,
+                CASE o.concept_id
+                 when 23757 then  'ADOLESCENTES REVELADAS/OS AR'
+                 when 23757 then  'ADOLESCENTES REVELADAS/OS AR'
+				 when 165324 then 'ADOLESCENTE E JOVEM MENTOR'
+                when 23753 then 'CRIANCAS REVELADAS CR'
+                when 23755 then 'PAIS E CUIDADORES PC'
+                when 24031 then 'Mãe Mentora'
+                when 23759 then 'MAE PARA MAE MPM'
+                when 165325 then 'HOMEM CAMPEAO'
+                when 23772 then 'OUTRO GRUPO DE APOIO'
+                ELSE '' END AS grupo_apoio
+				FROM (
+							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_ult_seguimento
+							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
+							WHERE e.encounter_type IN (6,9,53) AND e.voided=0 AND o.voided=0 AND o.concept_id  in ( 23757, 165324, 23753, 23755, 24031, 23759, 165325, 23772)
+							  AND e.location_id=:location
+							GROUP BY patient_id
+				      )  ficha_seguimento
+
+			INNER JOIN encounter e ON e.patient_id=ficha_seguimento.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	e.encounter_type IN (6,9,34,35) AND ficha_seguimento.data_ult_seguimento =e.encounter_datetime AND e.voided=0 AND
+			       o.voided=0 AND o.concept_id in ( 23757, 165324, 23753, 23755, 24031, 23759, 165325, 23772)
+                     AND e.location_id=:location
+            GROUP BY patient_id ) g_apoio ON g_apoio.patient_id=inicio_real.patient_id
+
+
+
 /* ******************************* Revelacao do diagnostico **************************** */
 	 LEFT JOIN
 		(SELECT ultimavisita_revelacao.patient_id,ultimavisita_revelacao.encounter_datetime,
@@ -1356,4 +1570,4 @@ SELECT 	e.patient_id,
                     ) conset ON conset.patient_id = inicio_real.patient_id
 
 ) activos
-GROUP BY patient_id
+ GROUP BY patient_id
