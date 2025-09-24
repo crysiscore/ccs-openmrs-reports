@@ -140,7 +140,7 @@ FROM
 
 		)inicio_real
 
-	     /* criterio MDS 2 CV <1000 cópias/ml nos ultimos 12M */  
+ /********************************   CV ˂ 1000 cópias/ml nos ultimos 12M  *****************************************/
         left  JOIN
         (	select maior_cv.patient_id,max(valor_cv) valor_cv, data_maior_carga
 			from	
@@ -161,7 +161,7 @@ FROM
 			group by patient_id
 					
 		) cv on cv.patient_id=inicio_real.patient_id -- and  cv.valor_cv < 1000  
-          /* criterio MDS 2 CV <1000 cópias/ml nos ultimos 12M */  
+  ±
        LEFT JOIN(  
         	    SELECT 	e.patient_id,
 				CASE o.value_coded

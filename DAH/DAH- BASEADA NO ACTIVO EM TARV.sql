@@ -1,84 +1,32 @@
 /*
+Name - CCS LISTA DE PACIENTES COM RASTREIO DE DOENCA AVANCADA
+Description -
+		#   Critérios para elegiveis para rastreio de doença avançada:
+		•	Inicios TARV (do período que se pretende extrair a lista),
+		•	Reinicios (do período que se pretende extrair a lista),
+		•	Grávidas
+		•	Falências- 2 CVs consecutivas acima de 1000; Ficha LAB
+		•	Ter iniciado TB ou estar em tratamento TB no periodo( Ficha clinica)
+		*   Incluir como variável
+		•	último Resultado do CD4 abaixo de 200;
+		•	pacientes com teste de CrAG e TB_LAM;
+		•	Data de Inicio TARV;
 
-Name CCS ACTUALMENTE EM TARV 33 DIAS
-Description-
-              - Pacientes actualmente em tarv, com data do proximo seguimento nao superior a data corremte em 28 dias
 
-Created By: Colaco C.
-Created Date: NA
+Created By - Agnaldo  Samuel
+Created Date - 29/08/2021
 
-Change by: Agnaldo  Samuel
-Change Date: 06/06/2021
-Change Reason: Bug fix
-    -- Peso e altura incorrecta ( Anibal J.)
-    -- Excluir ficha resumo e APPSS na determinacao da ultima visita
-    -- Revelacao de diagnostico da ficha clinica ( Mauricio T.)
+Modified  By - Agnaldo  Samuel
+Modification Date - 04/01/2022
+Modification Reason:  Novos criterios de elegibilidade
 
-Change Date: 18/11/2021
-Change by: Agnaldo  Samuel
-Change Reason: Bug fix
--- Correcao do erro da maior data da proxima consulta entre a consulta clinica e o fila
+Modified  By - Agnaldo  Samuel
+Modification Date - 14/05/2025
+Modification Reason:
+        • Retirar o CD4 como critério mas mantendo como uma variável adicional somente;
+        • Acrescentar uma coluna das mulheres grávidas inscritas (considerar somente a data de inscrição no programa) no periodo de reporte
+        • Manter todos os restantes critérios referentes à CV.
 
-Change Date: 13/05/2022
-Change by: Agnaldo  Samuel
-Change Reason: Change request
--- Adicao da variavel profilaxia ctz ( Mauricio T.)
-
-Change Date: 13/05/2022
-Change by: Agnaldo  Samuel
-Change Reason: Change request
--- remover condicao endDate <= null nas CV (Marcia Jasse)
-
-Change Date: 28/07/2022
-Change by: Agnaldo  Samuel
-Change Reason: Bug fix
--- data gravida busca data de rastreio (Marcia Jasse)
-
-Change Date: 08/08/2022
-Change by: Agnaldo  Samuel
-Change Reason: Bug fix
-              -  Correcao no criterio de exclusao ( Pacientes transferidos da FC e cartao de visita).
-			  -  Revisao da sub-consulta que verifica a saida no programa TARV-Tratamento (Visao geral OpenMRS)
-
-Change Date: 26/01/2021
-Change by: Agnaldo  Samuel
-Change Reason: Change request
-              -  Correcao no criterio de exclusao ( Pacientes transferidos da FC e cartao de visita).
-			  -  Revisao da sub-consulta que verifica a saida no programa TARV-Tratamento (Visao geral OpenMRS)
-              -
-Change Date: 26/02/2023
-Change by: Agnaldo  Samuel
-Change Reason: Change request
-              -  Fonte de Regime T.  passa a ser FC
-              -  Remocao do campo no NID
-
-Change Date: 12/05/2023
-Change by: Agnaldo  Samuel
-Change Reason: Change request
-              -  Criterios do CDC
-              -  Inclusao de pacientes transferidos com levantamento actualizado
-
-Change Date: 12/12/2023
-Change by: Agnaldo  Samuel
-Change Reason: Change request
-              -  Rastreio de ITS
-              - data de  Inicio TPT
-
-Change Date: 05/05/2025
-Change by: Agnaldo  Samuel
-Change Reason: Change request ( Mauricio Timecane)
-            - Incluir o tipo de grupo de apoio;
-            - Incluir o resultado de rastreio de CaCU (a data de rastreio já existe)
-            - Criar uma aba e incluir os resultados de tensão arterial das 3 últimas consultas (máximo e minimo);
-            -  Inclusão de uma coluna de DD;
-            - Inclusão das datas de rastreio para CaCU;
-
-Change Date: 04/09/2025
-Change by: Agnaldo  Samuel
-Change Reason: Bug fix
-
-            - Correção do campo proximo levantamento
--           separar resultado de ccu em duas colunas (FC & Ficha CCU)
 
 */
 
@@ -92,39 +40,36 @@ FROM
 			p.gender,
 			DATE_FORMAT(p.birthdate,'%d/%m/%Y') AS birthdate ,
             ROUND(DATEDIFF(:endDate,p.birthdate)/365) idade_actual,
+
+           CASE
+            WHEN inicio_real.data_inicio BETWEEN :startDate AND :endDate THEN 'INICIO_TARV'
+            WHEN permanencia.estado_permanencia = 'REINICIO' AND permanencia.data_consulta BETWEEN :startDate AND :endDate THEN 'REINICIO_TARV'
+            WHEN gravida_real.data_gravida IS NOT NULL AND data_gravida BETWEEN :startDate AND :endDate THEN 'GRAVIDA'
+            WHEN falencia_cv.ult_cv > 1000 AND falencia_cv.penul_cv > 1000 THEN 'FALENCIA_TERAPEUTICA'
+            WHEN marcado_tb.tratamento_tb = 'INICIO' AND data_marcado_tb BETWEEN :startDate AND :endDate THEN 'INICIO_TB'
+          END AS criterio_inclusao,
+
             DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') AS data_inicio,
             weight.peso AS peso,
-            height.altura ,
-            hemog.hemoglobina,
             if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%'), '' )
 			 ) AS cd4,
 			  if(cd4.encounter_datetime is not null , DATE_FORMAT(cd4.encounter_datetime,'%d/%m/%Y')  , if(cd4_perc.encounter_datetime is not null, DATE_FORMAT(cd4_perc.encounter_datetime,'%d/%m/%Y') , '' )
 			 ) AS data_cd4,
-             if( cv.valor_comment is not null, concat('Menor (<) que ',cv.valor_comment ), if(cv.carga_viral_qualitativa is not null,cv.carga_viral_qualitativa,cv.carga_viral_qualitativa)  ) as carga_viral_qualitativa,
-            cv.valor_comment,
-             profilaxia_ctz.estado AS profilaxia_ctz,
-             DATE_FORMAT(in_3hp_tpi.data_inicio_tpt,'%d/%m/%Y') AS data_inicio_tpt,
-            DATE_FORMAT(cv.data_ultima_carga,'%d/%m/%Y') AS data_ult_carga_v ,
-            cv.valor_ultima_carga AS carga_viral_numeric,
-            cv.origem_resultado AS origem_cv,
+
+             DATE_FORMAT( falencia_cv.encounter_datetime, '%d/%m/%Y') AS  data_ult_cv,
+            falencia_cv.ult_cv as  carga_viral_numeric,
+            falencia_cv.penul_cv as penult_cv,
+             DATE_FORMAT(ult_ped_cv.data_pedido_cv,'%d/%m/%Y') AS data_pedido_cv,
+             DATE_FORMAT(falencia_cv.data_penul_cv, '%d/%m/%Y') AS data_penult_cv,
             keypop.populacaochave,
              permanencia.estado_permanencia,
 			DATE_FORMAT(permanencia.data_consulta, '%d/%m/%Y') AS data_reinicio,
             linha_terapeutica.linhat AS linhaterapeutica,
             tipo_dispensa.tipodispensa,
-            modelodf.modelodf as mdc,
-			DATE_FORMAT(ult_mestr.value_datetime,'%d/%m/%Y')   data_ult_mestruacao,
-			IF( ptv.date_enrolled IS NULL, 'Nao', 	DATE_FORMAT(ptv.date_enrolled,'%d/%m/%Y') ) AS inscrito_ptv_etv,
-			DATE_FORMAT(ccu_rastreio.dataRegisto,'%d/%m/%Y') AS rastreio_ccu ,
 			tb_lam.resul_tb_lam,
 			DATE_FORMAT(tb_lam.data_result,'%d/%m/%Y') AS data_tb_lam,
             tb_crag.resul_tb_crag,
             DATE_FORMAT(tb_crag.data_result,'%d/%m/%Y')  AS data_tb_crag,
-			escola.nivel_escolaridade,
-			telef.value AS telefone,
-            regime.ultimo_regime,
-            its.its,
-              DATE_FORMAT(its.encounter_datetime,'%d/%m/%Y')  AS data_rastreio_its,
 			marcado_tb.tratamento_tb,
 			DATE_FORMAT(  marcado_tb.data_marcado_tb , '%d/%m/%Y') AS data_marcado_tb,
             DATE_FORMAT(regime.data_regime,'%d/%m/%Y') AS data_regime,
@@ -132,32 +77,12 @@ FROM
 			DATE_FORMAT(lactante_real.date_enrolled,'%d/%m/%Y') AS data_lactante,
             DATE_FORMAT(ultimoFila.encounter_datetime,'%d/%m/%Y') AS data_ult_levantamento,
 			DATE_FORMAT(ultimoFila.value_datetime,'%d/%m/%Y')   AS proximo_marcado,
-            -- DATE_FORMAT(3_ult_vis.encounter_datetime,'%d/%m/%Y') as data_visita_3,
-            -- DATE_FORMAT(2_ult_vis.encounter_datetime,'%d/%m/%Y') as data_visita_2,
             DATE_FORMAT(ult_vis.encounter_datetime,'%d/%m/%Y') AS data_ult_visita,
             DATE_FORMAT(ult_seguimento.encounter_datetime ,'%d/%m/%Y') AS data_ult_visita_2,
             DATE_FORMAT(ult_seguimento.value_datetime,'%d/%m/%Y') AS data_proxima_visita,
-            risco_adesao.factor_risco AS factor_risco_adesao,
-			IF(programa.patient_id IS NULL,'NAO','SIM') inscrito_programa,
-			IF(mastercard.patient_id IS NULL,'NAO','SIM') temmastercard,
-			IF(mastercardFResumo.patient_id IS NULL,'NAO','SIM') temmastercardFR,
-			IF(mastercardFClinica.patient_id IS NULL,'NAO','SIM') temmastercardFC,
-			IF(mastercardFAPSS.patient_id IS NULL,'NAO','SIM') temmastercardFA,
-            DATE_FORMAT(mastercardFAPSS.dataRegisto,'%d/%m/%Y') AS  data_ult_vis_apss,
-            DATE_FORMAT(mastercardFAPSS.value_datetime,'%d/%m/%Y')  AS  data_prox_apss,
-			DATE_FORMAT( ult_levant_master_card.data_ult_lev_master_card,'%d/%m/%Y')  AS data_ult_lev_master_card ,
-            DATE_FORMAT(ult_ped_cv.data_pedido_cv,'%d/%m/%Y') AS data_pedido_cv,
-            conset.consentimento,
-            revelacao.estado AS estado_revelacao,
-            rastreio_ccu_fc.resultado_via AS resultado_via_fc,
-             DATE_FORMAT(rastreio_ccu_fc.data_rastreio,'%d/%m/%Y')  AS  data_rastreio_ccu_fc,
-            rastreio_ccu_ficha_ccu.resultado_via as resultado_via_ccu,
-             DATE_FORMAT(rastreio_ccu_ficha_ccu.data_rastreio,'%d/%m/%Y')  AS  data_rastreio_ficha_ccu,
-            rastreio_hpv.resultado_hpv,
-            g_apoio.estado as estado_gapoio,
-            g_apoio.grupo_apoio,
-                       DATE_FORMAT(falencia_cv.data_penul_cv, '%d/%m/%Y') AS data_penult_cv,
-            falencia_cv.penul_cv as penult_cv,
+
+			telef.value AS telefone,
+            regime.ultimo_regime,
 			-- IF(gaaac.member_id IS NULL,'NÃO','SIM') emgaac,
             pad3.county_district AS 'Distrito',
 			pad3.address2 AS 'Padministrativo',
@@ -921,7 +846,7 @@ SELECT ultimavisita_rastreio_hpv.patient_id,ultimavisita_rastreio_hpv.encounter_
 
    /*****************************   gravida nos ultimos 12 meses   *************************************************/
    LEFT JOIN
-	(	SELECT patient_id, data_gravida
+	(	/*SELECT patient_id, data_gravida
 		FROM
 			( SELECT p.patient_id,MAX(obs_datetime) data_gravida
 			FROM 	patient p
@@ -932,16 +857,12 @@ SELECT ultimavisita_rastreio_hpv.patient_id,ultimavisita_rastreio_hpv.encounter_
 					e.location_id=:location
 			GROUP BY p.patient_id
 			) gravida
-			/*** union
-
+  */
 			select pp.patient_id,pp.date_enrolled as data_gravida
 			from 	patient_program pp
-			where 	pp.program_id in (3,4,8) and pp.voided=0 and  pp.date_completed is null and
-					pp.date_enrolled between  date_sub(:endDate, interval 9 MONTH) and  :endDate  and pp.location_id=:location
-			) gravida
-
-
-		group by patient_id   ***/
+			where 	pp.program_id in (3,8) and pp.voided=0 and  pp.date_completed is null and
+					pp.date_enrolled between  :startDate and  :endDate  and pp.location_id=:location
+		group by patient_id
 	) gravida_real ON gravida_real.patient_id=inicio_real.patient_id
 
   /*******************************              LACTANTES              *********************************************/
@@ -1403,38 +1324,6 @@ SELECT 	e.patient_id,
 						GROUP BY pg.patient_id
         ) ptv ON ptv.patient_id= inicio_real.patient_id
 
-          /* ******************************** ultima carga viral *********** ******************************/
-        LEFT JOIN(
-        SELECT 	e.patient_id,
-				CASE o.value_coded
-                WHEN 1306  THEN  'Nivel baixo de detencao'
-                WHEN 23814 THEN  'Indectetavel'
-                WHEN 23905 THEN  'Menor que 10 copias/ml'
-                WHEN 23906 THEN  'Menor que 20 copias/ml'
-                WHEN 23907 THEN  'Menor que 40 copias/ml'
-                WHEN 23908 THEN  'Menor que 400 copias/ml'
-                WHEN 23904 THEN  'Menor que 839 copias/ml'
-                ELSE ''
-                END  AS carga_viral_qualitativa,
-              o.comments as valor_comment,
-				ult_cv.data_cv data_ultima_carga ,
-                o.value_numeric valor_ultima_carga,
-                fr.name AS origem_resultado
-                FROM  encounter e
-                INNER JOIN	(
-							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_cv
-							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
-							WHERE e.encounter_type IN (6,9,13,51,53) AND e.voided=0 AND o.voided=0 AND o.concept_id IN( 8856, 1305)
-							GROUP BY patient_id
-				) ult_cv
-                ON e.patient_id=ult_cv.patient_id
-				INNER JOIN obs o ON o.encounter_id=e.encounter_id
-                 LEFT JOIN form fr ON fr.form_id = e.form_id
-                 WHERE e.encounter_datetime=ult_cv.data_cv
-				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,51,53) AND
-				o.voided=0 AND 	o.concept_id IN( 856, 1305) /* AND  e.encounter_datetime <= :endDate */
-                GROUP BY e.patient_id
-		) cv ON cv.patient_id =  inicio_real.patient_id
 
  /*****************************   ultimo levantamento ************** **********************
 		LEFT JOIN
@@ -1789,5 +1678,18 @@ SELECT 	e.patient_id,
 					e.encounter_type =35 AND e.location_id=:location
                     ) conset ON conset.patient_id = inicio_real.patient_id
 
+	WHERE
+
+         inicio_real.data_inicio BETWEEN :startDate AND :endDate -- Inícios TARV
+        OR   ( permanencia.estado_permanencia = 'REINICIO'  and  permanencia.data_consulta BETWEEN :startDate AND :endDate) -- Reinícios TARV
+        OR  (gravida_real.data_gravida IS NOT NULL and data_gravida BETWEEN :startDate AND :endDate )-- Gravidas Inscritas
+        OR (falencia_cv.ult_cv > 1000 AND falencia_cv.penul_cv > 1000) -- Falências
+        OR  ( marcado_tb.tratamento_tb   = 'INICIO'   AND data_marcado_tb  BETWEEN :startDate AND :endDate) -- Início tratamento TB
+
 ) activos
- GROUP BY patient_id
+ group by activos.patient_id
+
+
+
+
+

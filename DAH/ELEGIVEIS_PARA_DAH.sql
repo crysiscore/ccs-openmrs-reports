@@ -1,17 +1,17 @@
 /*
 Name - CCS LISTA DE PACIENTES COM RASTREIO DE DOENCA AVANCADA
-Description - 
+Description -
 		#   Critérios para elegiveis para rastreio de doença avançada:
-		•	Inicios TARV (do período que se pretende extrair a lista), 
-		•	Reinicios (do período que se pretende extrair a lista), 
-		•	Grávidas 
+		•	Inicios TARV (do período que se pretende extrair a lista),
+		•	Reinicios (do período que se pretende extrair a lista),
+		•	Grávidas
 		•	Falências- 2 CVs consecutivas acima de 1000; Ficha LAB
 		•	Ter iniciado TB ou estar em tratamento TB no periodo( Ficha clinica)
 		*   Incluir como variável
 		•	último Resultado do CD4 abaixo de 200;
 		•	pacientes com teste de CrAG e TB_LAM;
 		•	Data de Inicio TARV;
-	
+
 
 Created By - Agnaldo  Samuel
 Created Date - 29/08/2021
@@ -31,10 +31,10 @@ Modification Reason:
 */
 
 
-SELECT 
+SELECT
     *
 FROM
-    (SELECT 
+    (SELECT
         inicio_real.patient_id,
             CONCAT(pid.identifier, ' ') AS NID,
             CONCAT(IFNULL(pn.given_name, ''), ' ', IFNULL(pn.middle_name, ''), ' ', IFNULL(pn.family_name, '')) AS 'NomeCompleto',
@@ -406,11 +406,11 @@ FROM
         INNER JOIN person p ON p.person_id = inicio_real.patient_id
 
     /*  Start  ********************************** person attributees ********************************/
-    LEFT JOIN (SELECT 
+    LEFT JOIN (SELECT
         pad1.*
     FROM
         person_address pad1
-    INNER JOIN (SELECT 
+    INNER JOIN (SELECT
         person_id, MIN(person_address_id) id
     FROM
         person_address
@@ -420,11 +420,11 @@ FROM
     WHERE
         pad1.person_id = pad2.person_id
             AND pad1.person_address_id = pad2.id) pad3 ON pad3.person_id = inicio_real.patient_id
-    LEFT JOIN (SELECT 
+    LEFT JOIN (SELECT
         pn1.*
     FROM
         person_name pn1
-    INNER JOIN (SELECT 
+    INNER JOIN (SELECT
         person_id, MIN(person_name_id) id
     FROM
         person_name
@@ -434,11 +434,11 @@ FROM
     WHERE
         pn1.person_id = pn2.person_id
             AND pn1.person_name_id = pn2.id) pn ON pn.person_id = inicio_real.patient_id
-    LEFT JOIN (SELECT 
+    LEFT JOIN (SELECT
         pid1.*
     FROM
         patient_identifier pid1
-    INNER JOIN (SELECT 
+    INNER JOIN (SELECT
         patient_id, MIN(patient_identifier_id) id
     FROM
         patient_identifier
@@ -450,7 +450,7 @@ FROM
             AND pid1.patient_identifier_id = pid2.id) pid ON pid.patient_id = inicio_real.patient_id
     /*  End  ********************************** person attributees **********************************/
     /* Start ******************************************* Inscricao PTV  ***********************************/
-    LEFT JOIN (SELECT 
+    LEFT JOIN (SELECT
         patient_id, MAX(data_gravida) AS data_gravida
     FROM
         (/* SELECT -- Criterio removido por solicitacao. Mauricio 06.05.2025
@@ -478,7 +478,7 @@ FROM
             AND pp.location_id = :location) gravida
     GROUP BY patient_id) inscricao_ptv ON inscricao_ptv.patient_id = inicio_real.patient_id
 
-    /* ********************************************* Gravida  ****************************************/
+            /* Start ******************************************* Gravida  ***********************************/
     LEFT JOIN ( SELECT
         p.patient_id, MAX(obs_datetime) data_gravida
     FROM
@@ -496,26 +496,26 @@ FROM
             AND e.location_id = :location
     GROUP BY p.patient_id
    ) gravida ON gravida.patient_id = inicio_real.patient_id
-    /******************************************** Gravida  **********************************************/
-    /* Start ************************ TRATAMENTO DE TUBERCULOSE NA FICHA CLINICA  ************************/
+    /* End ******************************************* Gravida  *************************************/
+    /* Start ************************ TRATAMENTO DE TUBERCULOSE NA FICHA CLINICA  *******************/
     LEFT JOIN
 		( Select ultimavisita_tb.patient_id, ultimavisita_tb.encounter_datetime data_marcado_tb,
         CASE o.value_coded
 					WHEN '1256'  THEN 'INICIO'
 					WHEN '1257' THEN 'CONTINUA'
-				
+
 				ELSE '' END AS tratamento_tb
 			from
 
 			(	select 	e.patient_id,max(encounter_datetime) as encounter_datetime
-				from 	encounter e 
+				from 	encounter e
                         inner join obs o on o.encounter_id =e.encounter_id
 				       and 	e.voided=0  and o.voided=0   and o.concept_id=1268 and e.encounter_type IN (6,9)  and e.location_id=:location
 				group by e.patient_id
 			) ultimavisita_tb
 			inner join encounter e on e.patient_id=ultimavisita_tb.patient_id
-			inner join obs o on o.encounter_id=e.encounter_id			
-			where o.concept_id=1268 and o.voided=0 and e.encounter_datetime=ultimavisita_tb.encounter_datetime and 
+			inner join obs o on o.encounter_id=e.encounter_id
+			where o.concept_id=1268 and o.voided=0 and e.encounter_datetime=ultimavisita_tb.encounter_datetime and
 			e.encounter_type in (6,9) and o.value_coded in (1256,1257) and e.location_id=:location
 			       and  e.encounter_datetime BETWEEN :startDate AND :endDate
 		) marcado_tb on marcado_tb.patient_id =   inicio_real.patient_id
@@ -585,6 +585,7 @@ FROM 	   ( SELECT e.patient_id, encounter_datetime, o.value_numeric
                         AND o.concept_id IN (856)
 				) visita2
 GROUP BY visita2.patient_id
+having  ult_cv <> penul_cv and ult_cv > 0
        ) falencia_cv ON falencia_cv.patient_id = inicio_real.patient_id
      /****************** ****************************  CD4  Absoluto  *****************************************************/
         LEFT JOIN(
@@ -629,7 +630,7 @@ GROUP BY visita2.patient_id
 
 		) cd4_perc ON cd4_perc.patient_id =  inicio_real.patient_id
     /* Start ************************************* TB LAM  ******************************************/
-    LEFT JOIN (SELECT 
+    LEFT JOIN (SELECT
         e.patient_id,
             CASE o.value_coded
                 WHEN 664 THEN 'NEGATIVO'
@@ -638,7 +639,7 @@ GROUP BY visita2.patient_id
             END AS resul_tb_lam,
             encounter_datetime AS data_result
     FROM
-        (SELECT 
+        (SELECT
         e.patient_id, MAX(encounter_datetime) AS data_ult_linhat
     FROM
         encounter e
@@ -660,7 +661,7 @@ GROUP BY visita2.patient_id
             AND o.concept_id = 23951
     GROUP BY patient_id) tb_lam ON tb_lam.patient_id = inicio_real.patient_id
     /* Start *********************************** CRAG  **********************************************/
-    LEFT JOIN (SELECT 
+    LEFT JOIN (SELECT
         e.patient_id,
             CASE o.value_coded
                 WHEN 664 THEN 'NEGATIVO'
@@ -669,7 +670,7 @@ GROUP BY visita2.patient_id
             END AS resul_tb_crag,
             encounter_datetime AS data_result
     FROM
-        (SELECT 
+        (SELECT
         e.patient_id, MAX(encounter_datetime) AS data_ult_linhat
     FROM
         encounter e
@@ -690,12 +691,14 @@ GROUP BY visita2.patient_id
             AND o.voided = 0
             AND o.concept_id = 23952
     GROUP BY patient_id) tb_crag ON tb_crag.patient_id = inicio_real.patient_id
-    LEFT JOIN (SELECT 
+
+    /* End   *********************************** Permanencaio ARV  **********************************************/
+    LEFT JOIN (SELECT
         e.patient_id,
         IF(o.value_coded = 1705, 'REINICIO', '') AS estado_permanencia,
             encounter_datetime                   AS data_consulta
     FROM
-        (SELECT 
+        (SELECT
         e.patient_id, MAX(encounter_datetime) AS data_ult_linhat
     FROM
         encounter e
@@ -716,14 +719,14 @@ GROUP BY visita2.patient_id
             AND o.voided = 0
             AND o.concept_id = 6273
     GROUP BY patient_id) permanencia ON permanencia.patient_id = inicio_real.patient_id
-    LEFT JOIN (SELECT 
+    LEFT JOIN (SELECT
         ultimavisita.patient_id,
             ultimavisita.encounter_datetime,
             o.value_datetime,
             e.location_id,
             e.encounter_id
     FROM
-        (SELECT 
+        (SELECT
         e.patient_id, MAX(encounter_datetime) AS encounter_datetime
     FROM
         encounter e
@@ -739,7 +742,7 @@ GROUP BY visita2.patient_id
             AND e.encounter_datetime = ultimavisita.encounter_datetime
             AND e.encounter_type IN (9 , 6)
             AND e.location_id = :location) ult_seguimento ON ult_seguimento.patient_id = inicio_real.patient_id
-    LEFT JOIN (SELECT 
+    LEFT JOIN (SELECT
         p.person_id, p.value
     FROM
         person_attribute p
@@ -752,10 +755,8 @@ GROUP BY visita2.patient_id
 
     WHERE
         data_inicio BETWEEN :startDate AND :endDate
-            OR gravida.data_gravida IS NOT NULL
+            OR ( gravida.data_gravida IS NOT NULL  and gravida.data_gravida  BETWEEN :startDate AND :endDate )
             OR (ult_cv > 1000 AND penul_cv > 1000)
-            OR resul_tb_lam IS NOT NULL
-            OR resul_tb_crag IS NOT NULL
             OR permanencia.estado_permanencia = 'REINICIO'
             or data_marcado_tb is NOT NULL) activos
 

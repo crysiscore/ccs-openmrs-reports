@@ -33,9 +33,9 @@ FROM
 		(
 	    SELECT e.patient_id,
         CASE o.concept_id
-            WHEN 5324 THEN 'ADOLESCENTES REVELADAS/OS (AR)'
+            WHEN     165324 THEN 'ADOLESCENTE E JOVEM MENTOR'
 			WHEN 23757 THEN 'ADOLESCENTES REVELADAS/OS (AR)'
-            WHEN 165324 THEN 'ADOLESCENTE E JOVEM MENTOR'
+			WHEN 23753 THEN 'CRIANCAS REVELADAS'
             WHEN 23755 THEN 'PAIS E CUIDADORES (PC)'
             WHEN 24031 THEN 'Mãe Mentora'
             WHEN 23759 THEN 'MAE PARA MAE (MPM)'
@@ -54,13 +54,13 @@ FROM
 				FROM 	encounter e
                           INNER JOIN patient p ON p.patient_id=e.patient_id
                           INNER JOIN obs o ON o.encounter_id =e.encounter_id
-				             AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id in (23757,5324,23755,24031,23759,165325,23772 )
+				             AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id in (165324,23757,23753,23755,24031,23759,165325,23772 )
                             AND e.encounter_type IN (34,35)  AND e.location_id=:location and  encounter_datetime between :startDate and :endDate
 				GROUP BY e.patient_id
 			) last_grupo_apoio
 			INNER JOIN encounter e ON e.patient_id=last_grupo_apoio.patient_id
 			INNER JOIN obs o ON o.encounter_id=e.encounter_id
-			WHERE o.concept_id in (23757,5324,23755,24031,23759,165325,23772 )  AND o.voided=0 and e.voided=0
+			WHERE o.concept_id in (165324,23757,23753,23755,24031,23759,165325,23772 ) AND o.voided=0 and e.voided=0
 			  AND e.encounter_datetime=last_grupo_apoio.encounter_datetime
 			and e.encounter_type  IN (34,35) AND e.location_id=:location
               GROUP BY patient_id
@@ -244,9 +244,9 @@ SELECT 	e.patient_id,
 left join 		(
 	    SELECT e.patient_id,
         CASE o.concept_id
-            WHEN 5324 THEN 'ADOLESCENTES REVELADAS/OS (AR)'
+              WHEN     165324 THEN 'ADOLESCENTE E JOVEM MENTOR'
 			WHEN 23757 THEN 'ADOLESCENTES REVELADAS/OS (AR)'
-            WHEN 165324 THEN 'ADOLESCENTE E JOVEM MENTOR'
+			WHEN 23753 THEN 'CRIANCAS REVELADAS'
             WHEN 23755 THEN 'PAIS E CUIDADORES (PC)'
             WHEN 24031 THEN 'Mãe Mentora'
             WHEN 23759 THEN 'MAE PARA MAE (MPM)'
@@ -263,14 +263,14 @@ left join 		(
 				FROM 	encounter e
                           INNER JOIN patient p ON p.patient_id=e.patient_id
                           INNER JOIN obs o ON o.encounter_id =e.encounter_id
-				             AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id in (23757,5324,23755,24031,23759,165325,23772 )
+				             AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id in(165324,23757,23753,23755,24031,23759,165325,23772 )
                                                   and o.value_coded=1256
                             AND e.encounter_type IN (34,35)  AND e.location_id=:location and  encounter_datetime between :startDate and :endDate
 				GROUP BY e.patient_id
 			) ultimo_inicio
 			INNER JOIN encounter e ON e.patient_id=ultimo_inicio.patient_id
 			INNER JOIN obs o ON o.encounter_id=e.encounter_id
-			WHERE o.concept_id in (23757,5324,23755,24031,23759,165325,23772 )  AND o.voided=0 and e.voided=0
+			WHERE o.concept_id in (165324,23757,23753,23755,24031,23759,165325,23772 )  AND o.voided=0 and e.voided=0
 			  AND e.encounter_datetime=ultimo_inicio.encounter_datetime
 			and e.encounter_type  IN (34,35) AND e.location_id=:location
               GROUP BY patient_id
@@ -282,9 +282,9 @@ left join 		(
 left join 		(
 	    SELECT e.patient_id,
         CASE o.concept_id
-            WHEN 5324 THEN 'ADOLESCENTES REVELADAS/OS (AR)'
+             WHEN     165324 THEN 'ADOLESCENTE E JOVEM MENTOR'
 			WHEN 23757 THEN 'ADOLESCENTES REVELADAS/OS (AR)'
-            WHEN 165324 THEN 'ADOLESCENTE E JOVEM MENTOR'
+			WHEN 23753 THEN 'CRIANCAS REVELADAS'
             WHEN 23755 THEN 'PAIS E CUIDADORES (PC)'
             WHEN 24031 THEN 'Mãe Mentora'
             WHEN 23759 THEN 'MAE PARA MAE (MPM)'
@@ -301,14 +301,14 @@ left join 		(
 				FROM 	encounter e
                           INNER JOIN patient p ON p.patient_id=e.patient_id
                           INNER JOIN obs o ON o.encounter_id =e.encounter_id
-				             AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id in (23757,5324,23755,24031,23759,165325,23772 )
+				             AND 	e.voided=0  AND o.voided=0  AND p.voided=0  AND o.concept_id in (165324,23757,23753,23755,24031,23759,165325,23772 )
                                                   and o.value_coded=1256
                             AND e.encounter_type IN (6,9)  AND e.location_id=:location and  encounter_datetime between :startDate and :endDate
 				GROUP BY e.patient_id
 			) ultimo_inicio
 			INNER JOIN encounter e ON e.patient_id=ultimo_inicio.patient_id
 			INNER JOIN obs o ON o.encounter_id=e.encounter_id
-			WHERE o.concept_id in (23757,5324,23755,24031,23759,165325,23772 )  AND o.voided=0 and e.voided=0
+			WHERE o.concept_id in (165324,23757,23753,23755,24031,23759,165325,23772 ) AND o.voided=0 and e.voided=0
 			  AND e.encounter_datetime=ultimo_inicio.encounter_datetime
 			and e.encounter_type  IN (6,9) AND e.location_id=:location
               GROUP BY patient_id

@@ -6,7 +6,7 @@ Description-
 
 */
 
--- SET @rank := 0, @current_patient := '', @prev_datetime := NULL;
+
 
 SELECT *
 FROM
@@ -18,10 +18,16 @@ FROM
 			DATE_FORMAT(p.birthdate,'%d/%m/%Y') AS birthdate ,
             ROUND(DATEDIFF(:endDate,p.birthdate)/365) idade_actual,
             DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') AS data_inicio,
-            tensao_arterial.data_rastreio,
-            tensao_arterial.sistolica,
-            tensao_arterial.diastolica,
-            tensao_arterial.numero_visita
+            DATE_FORMAT(tensao_arterial_1.data_rastreio,'%d/%m/%Y') AS data_rastreio_1,
+            DATE_FORMAT(tensao_arterial_2.data_rastreio,'%d/%m/%Y') AS data_rastreio_2,
+            DATE_FORMAT(tensao_arterial_3.data_rastreio,'%d/%m/%Y') AS data_rastreio_3,
+            tensao_arterial_1.sistolica as sistolica_1,
+            tensao_arterial_1.diastolica as diastolica_1,
+            tensao_arterial_2.sistolica as sistolica_2,
+            tensao_arterial_2.diastolica as diastolica_2,
+            tensao_arterial_3.sistolica as sistolica_3,
+            tensao_arterial_3.diastolica as diastolica_3
+            -- tensao_arterial.numero_visita
 
 
 	FROM (select patient_id, data_inicio
@@ -421,8 +427,83 @@ FROM (
     ) t ,
     (SELECT @rank := 0, @current_patient := '', @prev_datetime := NULL) vars
 ) tmp
-WHERE numero_visita <= 3
+WHERE numero_visita = 3
 GROUP BY patient_id, data_rastreio, numero_visita
-ORDER BY patient_id, data_rastreio DESC ) tensao_arterial on tensao_arterial.patient_id = inicio_real.patient_id
+ORDER BY patient_id, data_rastreio DESC ) tensao_arterial_3 on tensao_arterial_3.patient_id = inicio_real.patient_id
 
-) activos ORDER BY patient_id, data_rastreio DESC
+	LEFT JOIN
+	    (
+
+SELECT
+    patient_id,
+    data_rastreio,
+    MAX(sistolica) as sistolica,
+    MAX(diastolica) as diastolica,
+    numero_visita
+FROM (
+    SELECT
+        t.*,
+        @rank := IF(@current_patient = t.patient_id AND @prev_datetime != t.data_rastreio, @rank + 1,
+                    IF(@current_patient := t.patient_id, 1, 1)) as numero_visita,
+        @prev_datetime := t.data_rastreio
+    FROM (
+        SELECT
+            e.patient_id,
+            e.encounter_datetime as data_rastreio,
+            MAX(CASE WHEN o.concept_id = 5085 THEN o.value_numeric END) as sistolica,
+            MAX(CASE WHEN o.concept_id = 5086 THEN o.value_numeric END) as diastolica
+        FROM encounter e
+        INNER JOIN obs o ON o.encounter_id = e.encounter_id
+        WHERE e.voided = 0
+        AND o.voided = 0
+        AND o.concept_id IN (5085, 5086)
+        AND e.encounter_type IN (6, 9)
+        AND e.location_id = :location
+        GROUP BY e.patient_id, e.encounter_datetime
+        ORDER BY e.patient_id, e.encounter_datetime DESC
+    ) t ,
+    (SELECT @rank := 0, @current_patient := '', @prev_datetime := NULL) vars
+) tmp
+WHERE numero_visita = 2
+GROUP BY patient_id, data_rastreio, numero_visita
+ORDER BY patient_id, data_rastreio DESC ) tensao_arterial_2 on tensao_arterial_2.patient_id = inicio_real.patient_id
+
+	LEFT JOIN
+	    (
+
+SELECT
+    patient_id,
+    data_rastreio,
+    MAX(sistolica) as sistolica,
+    MAX(diastolica) as diastolica,
+    numero_visita
+FROM (
+    SELECT
+        t.*,
+        @rank := IF(@current_patient = t.patient_id AND @prev_datetime != t.data_rastreio, @rank + 1,
+                    IF(@current_patient := t.patient_id, 1, 1)) as numero_visita,
+        @prev_datetime := t.data_rastreio
+    FROM (
+        SELECT
+            e.patient_id,
+            e.encounter_datetime as data_rastreio,
+            MAX(CASE WHEN o.concept_id = 5085 THEN o.value_numeric END) as sistolica,
+            MAX(CASE WHEN o.concept_id = 5086 THEN o.value_numeric END) as diastolica
+        FROM encounter e
+        INNER JOIN obs o ON o.encounter_id = e.encounter_id
+        WHERE e.voided = 0
+        AND o.voided = 0
+        AND o.concept_id IN (5085, 5086)
+        AND e.encounter_type IN (6, 9)
+        AND e.location_id = :location
+        GROUP BY e.patient_id, e.encounter_datetime
+        ORDER BY e.patient_id, e.encounter_datetime DESC
+    ) t ,
+    (SELECT @rank := 0, @current_patient := '', @prev_datetime := NULL) vars
+) tmp
+WHERE numero_visita = 1
+GROUP BY patient_id, data_rastreio, numero_visita
+ORDER BY patient_id, data_rastreio DESC ) tensao_arterial_1 on tensao_arterial_1.patient_id = inicio_real.patient_id
+
+
+) activos group  BY patient_id
