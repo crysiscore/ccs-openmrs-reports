@@ -40,3 +40,6 @@ mysqldump  -uslave -p -h127.0.0.1 -P3306 xipamanine reporting_report_design repo
 
 -- openmrs 01/04/2024
 mysqldump --column-statistics=0  -uslave -p4nUvt27aZ -h127.0.0.1 -P3306 xipamanine reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_23_05_2025.sql 
+
+-- Openmrs 23/09/2025
+mysqldump --column-statistics=0  -uslave -p4nUvt27aZ -h127.0.0.1 -P3306 magoanine_a reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_23_09_2025.sql
