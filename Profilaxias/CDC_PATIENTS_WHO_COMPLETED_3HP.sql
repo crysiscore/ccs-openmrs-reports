@@ -6,18 +6,14 @@ from
 (
 select inicio_real_3hp.patient_id, inicio_real_3hp.data_inicio_3hp, total_consultas_3hp.total as total_consultas_3hp ,ult_visit_3hp.ultima_cons_3hp,
  datediff(ult_visit_3hp.ultima_cons_3hp,inicio_real_3hp.data_inicio_3hp)/30 as duration
- from 
-
-   (
-
-
+ from    (
 select reg_3hp.patient_id, inicio_prof.data_inicio_3hp 
 	from 
 	(	SELECT p.patient_id, max(encounter_datetime) data_reg_3hp
 			FROM 	patient p 
 				INNER JOIN encounter e ON e.patient_id=p.patient_id
 				INNER JOIN obs o ON o.encounter_id=e.encounter_id
-			WHERE 	p.voided=0 AND e.voided=0 AND e.encounter_type IN (6,9) AND e.encounter_datetime BETWEEN @startDate AND @endDate
+			WHERE 	p.voided=0 AND e.voided=0 AND e.encounter_type IN (6,9) AND e.encounter_datetime <= @endDate
 			AND o.voided=0 AND o.concept_id=23985 AND o.value_coded IN (23954, 23984) -- 3HP e 3HP + Piridoxine
 	GROUP BY p.patient_id
 ) reg_3hp inner join 
@@ -31,7 +27,6 @@ SELECT p.patient_id, max(encounter_datetime) data_inicio_3hp
 	GROUP BY p.patient_id
 
 ) inicio_prof on inicio_prof.patient_id = reg_3hp.patient_id and reg_3hp.data_reg_3hp = inicio_prof.data_inicio_3hp
-
 )  inicio_real_3hp
 
 left join(  -- todas as consultas com prescricao 3HP

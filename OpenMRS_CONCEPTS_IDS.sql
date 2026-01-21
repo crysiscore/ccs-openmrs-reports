@@ -75,14 +75,17 @@ inner join concept_name cn on c.concept_id=cn.concept_id
 where c.uuid in ("e1dae234-1d5f-11e0-b929-000c29ad1d07"  )
  and locale ='pt';
 
--- Avaliacao Nutricional : Grau
+--  Modo de dispensa FAPSS
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ('7a72cf0c-5f43-436d-92d9-6f04cbb0a0b9','230c81e9-961f-478a-987d-3af637e83e5e', '7a72cf0c-5f43-436d-92d9-6f04cbb0a0b9',
-'ae8d45d0-14b9-460e-888d-f883de83be26','4387180e-695f-4c99-8182-33e51907062a','b856b79b-2e8e-4764-ae8b-c8b509cdda76',
-'a1d858ea-3a19-41e1-879d-2457440e1d36','f22a9436-4ed4-401c-84ea-0c7dbf910639')
+where c.uuid in ('40a9a12b-1205-4a55-bb93-caf15452bf61')
  and locale ='pt';
 
+--  Modo de dispensa FAPSS
+select c.concept_id,cn.name from concept c
+inner join concept_name cn on c.concept_id=cn.concept_id
+where c.uuid in (   'fef178f2-d4c9-4035-9989-11c9afe81ea3')
+ and locale ='pt';
 
   -- Avaliacao Nutricional : Grau
 
@@ -95,7 +98,7 @@ where c.uuid like '%AAAAA%'
 -- Avaliacao Nutricional : Grau
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ('6d6b3f98-4038-4a08-889c-51a7c4079e11' )
+where c.uuid in ('db7f1675-8850-476d-bc09-70be975c0867','9395a2a8-21e9-4e06-bd2f-24c52f56cd21','e1d9ecf8-1d5f-11e0-b929-000c29ad1d07' )
  and locale ='pt';
 
  -- OFicha clinica : Infecções oportunistas
@@ -105,6 +108,14 @@ inner join concept_name cn on c.concept_id=cn.concept_id
 where c.concept_id in (1066,1256 ,1065 ,1267)
  and locale ='pt';
 
+
+select c.concept_id,cn.name from concept c
+inner join concept_name cn on c.concept_id=cn.concept_id
+where c.concept_id in (2031,23944,23945)
+ and locale ='pt';
+
+
+
  -- Outras prescricoes : Ficha clinica
 
 select c.concept_id,cn.name from concept c
@@ -112,6 +123,12 @@ inner join concept_name cn on c.concept_id=cn.concept_id
 where cn.name like '%sarcoma%'
  and locale ='pt';
 
+-- Profissao
+
+select c.concept_id,cn.name from concept c
+inner join concept_name cn on c.concept_id=cn.concept_id
+where c.uuid in ('e1da2704-1d5f-11e0-b929-000c29ad1d07','e1da2812-1d5f-11e0-b929-000c29ad1d07','cc8ef88c-6ab6-4404-a036-d415bc42cc1c' ,'4df535db-b8c9-4759-85bb-f4bcb5bebdc6')
+ and locale ='pt';
 
 
 select e.patient_id, e.encounter_type, o.concept_id, o.value_coded, cname.name, encounter_datetime

@@ -124,7 +124,7 @@ FROM
 	) pick_up ON pick_up.patient_id=consulta.patient_id AND data_consulta=data_pick_up
 	INNER JOIN person p ON p.person_id=consulta.patient_id
 )
-)indicado_2
+) indicado_2
 )indicador_2 ON indicador_1.us=indicador_2.us
 INNER JOIN
 -- Tx_Curr

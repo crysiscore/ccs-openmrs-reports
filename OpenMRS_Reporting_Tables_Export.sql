@@ -43,3 +43,5 @@ mysqldump --column-statistics=0  -uslave -p4nUvt27aZ -h127.0.0.1 -P3306 xipamani
 
 -- Openmrs 23/09/2025
 mysqldump --column-statistics=0  -uslave -p4nUvt27aZ -h127.0.0.1 -P3306 magoanine_a reporting_report_design reporting_report_design_resource reporting_report_processor reporting_report_request serialized_object report_object > ccs_reports_23_09_2025.sql
+
+mysqldump -uroot -h127.0.0.1 -p --routines --triggers  mydb > sedv_10_12_2025.sql

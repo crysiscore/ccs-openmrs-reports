@@ -10,6 +10,11 @@ Change by: Agnaldo  Samuel
 Change Date: 06/06/2021 
 Change Reason: Bug fix
 -- CD4 & Tipo de dispensa
+
+Change by: Agnaldo  Samuel
+Change Date: 15/01/2026
+Change Reason: Change request
+-- CD4 semi-quantitativo
 */
 
 	select *
