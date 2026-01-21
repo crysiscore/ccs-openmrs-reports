@@ -80,6 +80,11 @@ Change Reason: Bug fix
             - Correção do campo proximo levantamento
 -           separar resultado de ccu em duas colunas (FC & Ficha CCU)
 
+Change Date: 14/01/2026
+Change by: Agnaldo  Samuel
+Change Reason: Bug fiix
+            - Correção dos codigos para mdc
+             - Adicinar cd4 qualitativo
 */
 
 
@@ -96,12 +101,11 @@ FROM
             weight.peso AS peso,
             height.altura ,
             hemog.hemoglobina,
-            if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%'), '' )
+            if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%') , cd4_qualit.cd4_qual )
 			 ) AS cd4,
-			  if(cd4.encounter_datetime is not null , DATE_FORMAT(cd4.encounter_datetime,'%d/%m/%Y')  , if(cd4_perc.encounter_datetime is not null, DATE_FORMAT(cd4_perc.encounter_datetime,'%d/%m/%Y') , '' )
-			 ) AS data_cd4,
-             if( cv.valor_comment is not null, concat('Menor (<) que ',cv.valor_comment ), if(cv.carga_viral_qualitativa is not null,cv.carga_viral_qualitativa,cv.carga_viral_qualitativa)  ) as carga_viral_qualitativa,
-            cv.valor_comment,
+			  if(cd4.encounter_datetime is not null , DATE_FORMAT(cd4.encounter_datetime,'%d/%m/%Y')  ,
+			      if(cd4_perc.encounter_datetime is not null, DATE_FORMAT(cd4_perc.encounter_datetime,'%d/%m/%Y') ,
+			          if(cd4_qualit.data_ult_cd4 is not null, DATE_FORMAT( cd4_qualit.data_ult_cd4,'%d/%m/%Y'),'') ) ) AS data_cd4,
              profilaxia_ctz.estado AS profilaxia_ctz,
              DATE_FORMAT(in_3hp_tpi.data_inicio_tpt,'%d/%m/%Y') AS data_inicio_tpt,
             DATE_FORMAT(cv.data_ultima_carga,'%d/%m/%Y') AS data_ult_carga_v ,
@@ -964,16 +968,9 @@ SELECT ultimavisita_rastreio_hpv.patient_id,ultimavisita_rastreio_hpv.encounter_
 		LEFT JOIN
 		(
 
-select modelos_estado.patient_id, modelos_estado.modelodf, modelos_estado.data_modelo, modelos_estado.status, modelos_estado.data_status,
-         modelos_estado.value_coded
-from (
 select mds.patient_id ,
        mds.modelodf,
-       mds.data_modelo as data_modelo,
-       st.status,
-       st.data_status,
-       st.value_coded,
-       mds.obs_group_id
+       mds.data_modelo as data_modelo
 from (
                 SELECT 	e.patient_id ,
 				CASE o.value_coded
@@ -1001,37 +998,18 @@ from (
  WHEN  23724 THEN 'Gaac (GA)'
  WHEN  165320 THEN 'PARAGEM UNICA NA SMI'
 
- 	ELSE '' END AS modelodf,
+ 	ELSE concat('OUTRO - ', o.value_coded ) END AS modelodf,
 
-				max(encounter_datetime) as data_modelo,
-                                 o.obs_group_id
+				max(encounter_datetime) as data_modelo
+
 			FROM 	obs o
 			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
 			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165174)
-			 AND o.location_id=:location   and o.value_coded in (165179,165177,165178,23731,165264,165179,165315)
-			            group by patient_id, modelodf, o.obs_group_id
+			 AND o.location_id=:location   and o.value_coded in (165314,165179,165265,165264,23729,165321,23731,23888,23726,165340,23732,165178,165319,165318,23730,165315,165316,23725,165177,165317,23727,23724,165320)
+			            group by patient_id
         ) mds
 
-                left join
 
-(
-                SELECT 	e.patient_id ,
-                         o.value_coded,
-				CASE o.value_coded
-                WHEN 1256 THEN 'CASO NOVO'
-                WHEN 1257 THEN 'MANTER'
-                WHEN 1267 THEN 'COMPLETO'
-                ELSE o.value_coded end AS status,
-                max(encounter_datetime) as data_status,
-                 o.obs_group_id as obs_group_id
-
-			FROM 	obs o
-			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
-			WHERE 	e.encounter_type IN (6,9) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165322)
-			 AND o.location_id=:location
-            group by patient_id , status, o.obs_group_id
-
-                     ) st  on st.obs_group_id = mds.obs_group_id group by mds.patient_id, mds.modelodf, mds.data_modelo) modelos_estado
 
 		) modelodf ON modelodf.patient_id=inicio_real.patient_id
 
@@ -1220,6 +1198,25 @@ SELECT 	e.patient_id,
 			GROUP BY patient_id
 
 		) cd4_perc ON cd4_perc.patient_id =  inicio_real.patient_id
+            	/****************** ****************************  CD4  Qualitativo  *****************************************************/
+        LEFT JOIN(
+        SELECT 	e.patient_id,
+				CASE o.value_coded
+						WHEN 165513  THEN '<= 200'
+					WHEN 1254  THEN '> 200'
+				ELSE '' END AS cd4_qual,
+                encounter_datetime AS data_ult_cd4
+				FROM 	(
+							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_ult_linhat
+							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
+							WHERE e.encounter_type IN (6,9, 13,51) AND e.voided=0 AND o.voided=0 AND o.concept_id = 165515
+							GROUP BY patient_id
+				) ult_cd4_qual
+			INNER JOIN encounter e ON e.patient_id=ult_cd4_qual.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	e.encounter_type IN (6,9, 13,51) AND ult_cd4_qual.data_ult_linhat =e.encounter_datetime AND e.voided=0 AND o.voided=0 AND o.concept_id = 165515
+            GROUP BY patient_id
+		) cd4_qualit ON cd4_qualit.patient_id =  inicio_real.patient_id
        	/**  ******************************************  Levantamento de ARV Master Card  **** ************************************ **/
             LEFT JOIN (
 	SELECT ult_lev_master_card.patient_id,o.value_datetime AS data_ult_lev_master_card
@@ -1405,26 +1402,29 @@ SELECT 	e.patient_id,
 
           /* ******************************** ultima carga viral *********** ******************************/
         LEFT JOIN(
+
         SELECT 	e.patient_id,
-				CASE o.value_coded
-                WHEN 1306  THEN  'Nivel baixo de detencao'
-                WHEN 23814 THEN  'Indectetavel'
-                WHEN 23905 THEN  'Menor que 10 copias/ml'
-                WHEN 23906 THEN  'Menor que 20 copias/ml'
-                WHEN 23907 THEN  'Menor que 40 copias/ml'
-                WHEN 23908 THEN  'Menor que 400 copias/ml'
-                WHEN 23904 THEN  'Menor que 839 copias/ml'
-                ELSE ''
-                END  AS carga_viral_qualitativa,
-              o.comments as valor_comment,
-				ult_cv.data_cv data_ultima_carga ,
-                o.value_numeric valor_ultima_carga,
+       IF(o.value_numeric IS NOT NULL, o.value_numeric,
+           CASE
+             WHEN o.value_coded IS NULL THEN ''
+             WHEN o.value_coded = 1306  THEN 'Nivel baixo de detencao'
+             WHEN o.value_coded = 23905 THEN 'Menor que 10 copias/ml'
+             WHEN o.value_coded = 23906 THEN 'Menor que 20 copias/ml'
+             WHEN o.value_coded = 23907 THEN 'Menor que 40 copias/ml'
+             WHEN o.value_coded = 23908 THEN 'Menor que 400 copias/ml'
+             WHEN o.value_coded = 23904 THEN 'Menor que 839 copias/ml'
+             WHEN o.value_coded = 165331 THEN CONCAT('MENOR QUE ', COALESCE(o.comments,''), ' Copias/ml')
+             WHEN o.value_coded = 23814 THEN 'CARGA VIRAL INDETECTAVEL'
+             ELSE CONCAT('OUTRO - ', COALESCE(o.value_coded,''))
+           END
+        ) AS valor_ultima_carga,
+                e.encounter_datetime AS data_ultima_carga,
                 fr.name AS origem_resultado
                 FROM  encounter e
                 INNER JOIN	(
 							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_cv
 							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
-							WHERE e.encounter_type IN (6,9,13,51,53) AND e.voided=0 AND o.voided=0 AND o.concept_id IN( 8856, 1305)
+							WHERE e.encounter_type IN (6,9,13,51,53) AND e.voided=0 AND o.voided=0 AND o.concept_id IN( 856, 1305)
 							GROUP BY patient_id
 				) ult_cv
                 ON e.patient_id=ult_cv.patient_id
@@ -1434,6 +1434,7 @@ SELECT 	e.patient_id,
 				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,51,53) AND
 				o.voided=0 AND 	o.concept_id IN( 856, 1305) /* AND  e.encounter_datetime <= :endDate */
                 GROUP BY e.patient_id
+
 		) cv ON cv.patient_id =  inicio_real.patient_id
 
  /*****************************   ultimo levantamento ************** **********************
