@@ -53,10 +53,11 @@ FROM
             DATE_FORMAT(tb_lam.data_result,'%d/%m/%Y') AS data_tb_lam,
             tb_crag.resul_tb_crag,
             DATE_FORMAT(tb_crag.data_result,'%d/%m/%Y')  AS data_crag,
-            if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%'), '' )
+            if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%') , cd4_qualit.cd4_qual )
 			 ) AS cd4,
-			  if(cd4.encounter_datetime is not null , DATE_FORMAT(cd4.encounter_datetime,'%d/%m/%Y')  , if(cd4_perc.encounter_datetime is not null, DATE_FORMAT(cd4_perc.encounter_datetime,'%d/%m/%Y') , '' )
-			 ) AS data_cd4,
+			  if(cd4.encounter_datetime is not null , DATE_FORMAT(cd4.encounter_datetime,'%d/%m/%Y')  ,
+			      if(cd4_perc.encounter_datetime is not null, DATE_FORMAT(cd4_perc.encounter_datetime,'%d/%m/%Y') ,
+			          if(cd4_qualit.data_ult_cd4 is not null, DATE_FORMAT( cd4_qualit.data_ult_cd4,'%d/%m/%Y'),'') ) ) AS data_cd4,
             permanencia.estado_permanencia,
 			DATE_FORMAT(permanencia.data_consulta, '%d/%m/%Y') AS data_reinicio,
             telef.value AS telefone,
@@ -629,6 +630,27 @@ having  ult_cv <> penul_cv and ult_cv > 0
 			GROUP BY patient_id
 
 		) cd4_perc ON cd4_perc.patient_id =  inicio_real.patient_id
+
+
+              	/****************** ****************************  CD4  Qualitativo  *****************************************************/
+        LEFT JOIN(
+        SELECT 	e.patient_id,
+				CASE o.value_coded
+						WHEN 165513  THEN '<= 200'
+					WHEN 1254  THEN '> 200'
+				ELSE '' END AS cd4_qual,
+                encounter_datetime AS data_ult_cd4
+				FROM 	(
+							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_ult_linhat
+							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
+							WHERE e.encounter_type IN (6,9, 13,51) AND e.voided=0 AND o.voided=0 AND o.concept_id = 165515
+							GROUP BY patient_id
+				) ult_cd4_qual
+			INNER JOIN encounter e ON e.patient_id=ult_cd4_qual.patient_id
+            INNER JOIN obs o ON o.encounter_id=e.encounter_id
+			WHERE 	e.encounter_type IN (6,9, 13,51) AND ult_cd4_qual.data_ult_linhat =e.encounter_datetime AND e.voided=0 AND o.voided=0 AND o.concept_id = 165515
+            GROUP BY patient_id
+		) cd4_qualit ON cd4_qualit.patient_id =  inicio_real.patient_id
     /* Start ************************************* TB LAM  ******************************************/
     LEFT JOIN (SELECT
         e.patient_id,

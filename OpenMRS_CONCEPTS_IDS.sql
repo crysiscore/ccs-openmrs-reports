@@ -98,7 +98,7 @@ where c.uuid like '%AAAAA%'
 -- Avaliacao Nutricional : Grau
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ('db7f1675-8850-476d-bc09-70be975c0867','9395a2a8-21e9-4e06-bd2f-24c52f56cd21','e1d9ecf8-1d5f-11e0-b929-000c29ad1d07' )
+where c.uuid in ('cadc1c2a-cd22-43dc-8404-4ce4c8a7242d','1098AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA','f53848d5-3521-4cc8-ac72-d63adef281a1','3069be5c-cd02-4ddb-aa1f-bdd71d3dd6be' )
  and locale ='pt';
 
  -- OFicha clinica : Infecções oportunistas

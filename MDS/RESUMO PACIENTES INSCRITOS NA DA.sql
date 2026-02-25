@@ -13,13 +13,23 @@ FROM ( SELECT :location AS us,
 
       FROM (
  /************************************************************   Inscrito  na Ficha FC  e APSS ****************************************************************/
-               select mdc_fc_estado.patient_id,
-                    min(mdc_fc_estado.data_modelo) as data_inscricao,
-                    mdc_fc_estado.status           as estado
-               from (select mdc.patient_id,
-                            mdc.data_modelo as data_modelo,
-                            st.status
-                     from (
+
+select   mdc_fc_estado.patient_id, mdc_fc_estado.data_modelo as data_inscricao_da,
+             IF (mdc_fc_estado.status is not null,  mdc_fc_estado.status, NULL )  as estado ,
+             IF( mdc_fc_estado.data_status is not null, mdc_fc_estado.data_status , NULL )  as data_estado,
+              mdc_fc_estado.obs_group_id
+from (
+select mdc.patient_id ,
+       --  mdc.modelodf,
+       mdc.data_modelo as data_modelo,
+       st.status,
+       st.data_status,
+      --  st.value_coded,
+       -- mdc.form_name,
+       mdc.obs_group_id
+
+from (
+
                 select  mdc_grouped_inicio.patient_id, min(data_modelo) as data_modelo, mdc_grouped_inicio.obs_group_id
 
                 FROM (SELECT e.patient_id,
@@ -61,53 +71,61 @@ FROM ( SELECT :location AS us,
                         AND o.location_id = :location
                         and e.encounter_datetime between :startDate and :endDate
                       group by patient_id)  mdc_grouped_inicio group by mdc_grouped_inicio.patient_id
+        )  mdc
 
-                           ) mdc
+                inner join
 
-                              inner join
-                          (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 1256 THEN 'CASO NOVO'
-                                      WHEN 1257 THEN 'MANTER'
-                                      WHEN 1267 THEN 'COMPLETO'
-                                      ELSE o.value_coded end AS status,
-                                  min(encounter_datetime)    as data_status,
-                                  o.obs_group_id             as obs_group_id
+(
+                SELECT 	e.patient_id ,
+				CASE o.value_coded
+                WHEN 1256 THEN 'CASO NOVO'
+                WHEN 1257 THEN 'MANTER'
+                WHEN 1267 THEN 'COMPLETO'
+                ELSE o.value_coded end AS status,
+                min(encounter_datetime) as data_status,
+                 o.obs_group_id as obs_group_id
 
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id in (165322)
-                             and o.value_coded = 1256
-                             AND o.location_id = :location
-                           group by patient_id, status, o.obs_group_id) st on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id
-                     group by mdc.patient_id
-                     order by mdc.patient_id, mdc.data_modelo desc) mdc_fc_estado
-               group by mdc_fc_estado.patient_id ) novos_inscritos
-               INNER JOIN person p ON p.person_id = novos_inscritos.patient_id
+			FROM 	obs o
+			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
+			WHERE 	e.encounter_type IN (6,9,34,35) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165322) and o.value_coded in (1256,1257)
+			 AND o.location_id=:location
+            group by patient_id , status, o.obs_group_id
+
+     )   st  on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id and st.data_status =mdc.data_modelo
+    )  mdc_fc_estado
+
+
+          ) novos_inscritos
+
+
+            INNER JOIN person p ON p.person_id = novos_inscritos.patient_id
       ) indicador_1
 
 INNER JOIN
- /********************************************************  Activos na DA,   * CV abaixo de 1000 cps  ********************************************************/
+ /******************************************************** *** Activos na DA,   * CV abaixo de 1000 cps  ***********************************/
 (
 
 SELECT :location AS us,
              SUM(CASE WHEN  (cv.valor_ultima_carga is not null and  cv.valor_ultima_carga <1000 ) or ( cv.carga_viral_qualitativa is not null) THEN 1  else 0  END ) activos_da_cv
 
       FROM (
-               select mdc_fc_estado.patient_id,
-                      max(mdc_fc_estado.data_modelo) as data_inscricao,
-                      mdc_fc_estado.status           as estado
+ /************************************************************   Inscrito  na Ficha FC  e APSS ******************************************/
+select   mdc_fc_estado.patient_id, mdc_fc_estado.data_modelo as data_inscricao_da,
+             IF (mdc_fc_estado.status is not null,  mdc_fc_estado.status, NULL )  as estado ,
+             IF( mdc_fc_estado.data_status is not null, mdc_fc_estado.data_status , NULL )  as data_estado,
+              mdc_fc_estado.obs_group_id
+from (
+select mdc.patient_id ,
+       --  mdc.modelodf,
+       mdc.data_modelo as data_modelo,
+       st.status,
+       st.data_status,
+      --  st.value_coded,
+       -- mdc.form_name,
+       mdc.obs_group_id
 
-               from (select mdc.patient_id,
-                            mdc.data_modelo as data_modelo,
-                            st.status,
-                            st.data_status,
-                            mdc.obs_group_id
+from (
 
-                     from (
                 select  mdc_grouped_inicio.patient_id, min(data_modelo) as data_modelo, mdc_grouped_inicio.obs_group_id
 
                 FROM (SELECT e.patient_id,
@@ -148,32 +166,179 @@ SELECT :location AS us,
                         and (o.value_text = 'DA-Inicio' or o.comments = 'DA-Inicio')
                         AND o.location_id = :location
                         and e.encounter_datetime between :startDate and :endDate
-                      group by patient_id)  mdc_grouped_inicio group by mdc_grouped_inicio.patient_id) mdc
+                      group by patient_id)  mdc_grouped_inicio group by mdc_grouped_inicio.patient_id
+        )  mdc
 
-                              inner join
-                          (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 1256 THEN 'CASO NOVO'
-                                      WHEN 1257 THEN 'MANTER'
-                                      WHEN 1267 THEN 'COMPLETO'
-                                      ELSE o.value_coded end AS status,
-                                  max(encounter_datetime)    as data_status,
-                                  o.obs_group_id             as obs_group_id
+                inner join
 
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165322
-                             and o.value_coded in (1257)
-                             AND o.location_id = :location
-                           group by patient_id, status, o.obs_group_id) st on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id
-                     group by mdc.patient_id, mdc.data_modelo
-                     order by mdc.patient_id, mdc.data_modelo desc) mdc_fc_estado
+         (
+                SELECT 	e.patient_id ,
+				CASE o.value_coded
+                WHEN 1256 THEN 'CASO NOVO'
+                WHEN 1257 THEN 'MANTER'
+                WHEN 1267 THEN 'COMPLETO'
+                ELSE o.value_coded end AS status,
+                max(encounter_datetime) as data_status,
+                 o.obs_group_id as obs_group_id
 
+			FROM 	obs o
+			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
+			WHERE 	e.encounter_type IN (6,9,34,35) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165322) and o.value_coded  =1257
+			 AND o.location_id=:location
+			                AND e.encounter_datetime between :startDate and :endDate
+            group by patient_id , status, o.obs_group_id
 
-               group by mdc_fc_estado.patient_id) activos_da
+               )   st  on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id and st.data_status =mdc.data_modelo
+        )  mdc_fc_estado
+
+     ) novos_inscritos
+
+/* ***************************************** ultima carga viral  durante o periodo de  inscricao na DA*********** ************************/
+        INNER JOIN(
+        SELECT 	e.patient_id,
+				CASE o.value_coded
+                WHEN 1306  THEN  'Nivel baixo de detencao'
+                WHEN 23905 THEN  'Menor que 10 copias/ml'
+                WHEN 23906 THEN  'Menor que 20 copias/ml'
+                WHEN 23907 THEN  'Menor que 40 copias/ml'
+                WHEN 23908 THEN  'Menor que 400 copias/ml'
+                WHEN 23904 THEN  'Menor que 839 copias/ml'
+                WHEN 165331 THEN 'MENOR QUE '
+                WHEN 1304  THEN 'CARGA VIRAL SUPRIMIDA'
+                WHEN 23814 THEN 'CARGA VIRAL INDETECTAVEL'
+                ELSE concat('OUTRO - ',value_coded  )
+                END  AS carga_viral_qualitativa,
+              o.comments as valor_comment,
+				ult_cv.data_cv data_ultima_carga ,
+                o.value_numeric valor_ultima_carga
+                FROM  encounter e
+                INNER JOIN	(
+							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_cv
+							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
+							WHERE e.encounter_type IN (6,9,13,51,53) AND e.voided=0 AND o.voided=0 AND o.concept_id IN( 856, 1305)
+				             AND  e.encounter_datetime between   :startDate and  :endDate
+							GROUP BY patient_id
+				) ult_cv  ON e.patient_id=ult_cv.patient_id
+				INNER JOIN obs o ON o.encounter_id=e.encounter_id
+                 WHERE e.encounter_datetime=ult_cv.data_cv
+				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,51,53) AND
+				o.voided=0 AND 	o.concept_id IN( 856, 1305) /* AND  e.encounter_datetime <= :endDate */
+                GROUP BY e.patient_id
+		) cv ON cv.patient_id =  novos_inscritos.patient_id
+
+)  indicador_2 ON indicador_2.us=indicador_1.us
+
+INNER JOIN
+/******************************************** Activos na DS,   * CV abaixo de 1000 cps  **************************************************/
+(
+SELECT :location AS us,
+             SUM(CASE WHEN  (cv.valor_ultima_carga is not null and  cv.valor_ultima_carga <1000 ) or ( cv.carga_viral_qualitativa is not null) THEN 1  else 0  END ) activos_ds_cv
+
+    FROM
+    (
+                  SELECT e.patient_id,
+                          /* CASE o.value_coded
+                         WHEN  165314 THEN  'DISPENSA ANUAL DE ARV'
+                         WHEN  1098 THEN   'FLUXO RÁPIDO (FR)'
+                         WHEN  23888 THEN  'DISPENSA SEMESTRAL'
+                         WHEN  23720 THEN 'DISPENSA TRIMESTRAL (DT)'
+ 	                     ELSE  '' END AS tipo_dispensa, */
+                             max(encounter_datetime) as data_modelo
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id        =  23739
+                        and o.value_coded       = 23888
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id
+
+        )  tipo_dispensa_ds
+
+    INNER JOIN  (
+ /************************************************************   Inscrito  na Ficha FC  e APSS ******************************************/
+select   mdc_fc_estado.patient_id, mdc_fc_estado.data_modelo as data_inscricao_da,
+             IF (mdc_fc_estado.status is not null,  mdc_fc_estado.status, NULL )  as estado ,
+             IF( mdc_fc_estado.data_status is not null, mdc_fc_estado.data_status , NULL )  as data_estado,
+              mdc_fc_estado.obs_group_id
+from (
+select mdc.patient_id ,
+       mdc.data_modelo as data_modelo,
+       st.status,
+       st.data_status,
+       mdc.obs_group_id
+
+from (
+
+                select  mdc_grouped_inicio.patient_id, min(data_modelo) as data_modelo, mdc_grouped_inicio.obs_group_id
+
+                FROM (SELECT e.patient_id,
+                          /* CASE o.value_coded
+                         WHEN  165314 THEN  'DISPENSA ANUAL DE ARV'
+                         WHEN  23729 THEN   'FLUXO RÁPIDO (FR)'
+                         WHEN  23888 THEN  'DISPENSA SEMESTRAL'
+                         WHEN  23730 THEN 'DISPENSA TRIMESTRAL (DT)'
+ 	                     ELSE  '' END AS modelodf,
+                         f.name as form_name, */
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id        =  165174
+                        and o.value_coded       = 165314
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id
+
+                      union all
+
+                      SELECT e.patient_id,
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id = 165174
+                        and o.value_coded = 23732
+                        and (o.value_text = 'DA-Inicio' or o.comments = 'DA-Inicio')
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id)  mdc_grouped_inicio group by mdc_grouped_inicio.patient_id
+        )  mdc
+
+                inner join
+
+         (
+                SELECT 	e.patient_id ,
+				CASE o.value_coded
+                WHEN 1256 THEN 'CASO NOVO'
+                WHEN 1257 THEN 'MANTER'
+                WHEN 1267 THEN 'COMPLETO'
+                ELSE o.value_coded end AS status,
+                max(encounter_datetime) as data_status,
+                 o.obs_group_id as obs_group_id
+
+			FROM 	obs o
+			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
+			WHERE 	e.encounter_type IN (6,9,34,35) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165322) and o.value_coded  =1257
+			 AND o.location_id=:location
+			                AND e.encounter_datetime between :startDate and :endDate
+            group by patient_id , status, o.obs_group_id
+
+               )   st  on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id and st.data_status =mdc.data_modelo
+        )  mdc_fc_estado
+
+     ) novos_inscritos on  novos_inscritos.patient_id = tipo_dispensa_ds.patient_id
+
 
                          /* ******************************** ultima carga viral  durante o periodo de  inscricao na DA*********** ******************************/
         INNER JOIN(
@@ -204,113 +369,12 @@ SELECT :location AS us,
 				INNER JOIN obs o ON o.encounter_id=e.encounter_id
                  WHERE e.encounter_datetime=ult_cv.data_cv
 				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,51,53) AND
-				o.voided=0 AND 	o.concept_id IN( 856, 1305) /* AND  e.encounter_datetime <= :endDate */
+				o.voided=0 AND 	o.concept_id IN( 856, 1305)  AND  e.encounter_datetime between :startDate and :endDate
                 GROUP BY e.patient_id
-		) cv ON cv.patient_id =  activos_da.patient_id
+		) cv ON cv.patient_id =  tipo_dispensa_ds.patient_id
 
-
-)  indicador_2 ON indicador_2.us=indicador_1.us
-
-INNER JOIN
-/********************************************************  Activos na DS,   * CV abaixo de 1000 cps  *********************************************************/
-(
-SELECT :location AS us,
-             SUM(CASE WHEN  (cv.valor_ultima_carga is not null and  cv.valor_ultima_carga <1000 ) or ( cv.carga_viral_qualitativa is not null) THEN 1  else 0  END ) activos_ds_cv
-
-      FROM (
-               select mdc_fc_estado.patient_id,
-                      max(mdc_fc_estado.data_modelo) as data_inscricao,
-                      mdc_fc_estado.status           as estado
-
-               from (select mdc.patient_id,
-                            mdc.modelodf,
-                            mdc.data_modelo as data_modelo,
-                            st.status,
-                            st.data_status,
-                            mdc.form_name,
-                            mdc.obs_group_id
-
-                     from (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 165314 THEN 'DISPENSA ANUAL DE ARV'
-                                      WHEN 23729 THEN 'FLUXO RÁPIDO (FR)'
-                                      WHEN 23888 THEN 'DISPENSA SEMESTRAL'
-                                      WHEN 23730 THEN 'DISPENSA TRIMESTRAL (DT)'
-                                      ELSE '' END         AS modelodf,
-                                  f.name                  as form_name,
-                                  max(encounter_datetime) as data_modelo,
-                                  o.obs_group_id
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                                    INNER JOIN form f on f.form_id = e.form_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165174
-                             and o.value_coded = 23888
-                             AND o.location_id = :location
-                             and e.encounter_datetime between :startDate and :endDate
-                           group by patient_id, modelodf, o.obs_group_id, f.name
-                           order by patient_id, data_modelo DESC) mdc
-
-                         INNER JOIN
-
-                         (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 1256 THEN 'CASO NOVO'
-                                      WHEN 1257 THEN 'MANTER'
-                                      WHEN 1267 THEN 'COMPLETO'
-                                      ELSE o.value_coded end AS status,
-                                  max(encounter_datetime)    as data_status,
-                                  o.obs_group_id             as obs_group_id
-
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165322
-                             and o.value_coded in (1257)
-                             AND o.location_id = :location
-                           group by patient_id, status, o.obs_group_id) st on st.obs_group_id = mdc.obs_group_id and    st.patient_id=mdc.patient_id
-                           group by mdc.patient_id, mdc.modelodf, mdc.data_modelo
-                           order by mdc.patient_id, mdc.data_modelo desc) mdc_fc_estado
-
-               group by mdc_fc_estado.patient_id ) activos_ds
-
-                         /* ******************************** ultima carga viral  durante o periodo de  avaliacao - DS*********** ******************************/
-        INNER JOIN(
-        SELECT 	e.patient_id,
-				CASE o.value_coded
-                WHEN 1306  THEN  'Nivel baixo de detencao'
-                WHEN 23905 THEN  'Menor que 10 copias/ml'
-                WHEN 23906 THEN  'Menor que 20 copias/ml'
-                WHEN 23907 THEN  'Menor que 40 copias/ml'
-                WHEN 23908 THEN  'Menor que 400 copias/ml'
-                WHEN 23904 THEN  'Menor que 839 copias/ml'
-                WHEN 165331 THEN 'MENOR QUE '
-                WHEN 1304  THEN 'CARGA VIRAL SUPRIMIDA'
-                WHEN 23814 THEN 'CARGA VIRAL INDETECTAVEL'
-                ELSE concat('OUTRO - ',value_coded  )
-                END  AS carga_viral_qualitativa,
-              o.comments as valor_comment,
-				ult_cv.data_cv data_ultima_carga ,
-                o.value_numeric valor_ultima_carga
-                FROM  encounter e
-                INNER JOIN	(
-							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_cv
-							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
-							WHERE e.encounter_type IN (6,9,13,51,53) AND e.voided=0 AND o.voided=0 AND o.concept_id IN( 856, 1305)
-				             AND  e.encounter_datetime between   :startDate and  :endDate
-							GROUP BY patient_id
-				) ult_cv  ON e.patient_id=ult_cv.patient_id
-				INNER JOIN obs o ON o.encounter_id=e.encounter_id
-                 WHERE e.encounter_datetime=ult_cv.data_cv
-				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,51,53) AND
-				o.voided=0 AND 	o.concept_id IN( 856, 1305) /* AND  e.encounter_datetime <= :endDate */
-                GROUP BY e.patient_id
-		) cv ON cv.patient_id =  activos_ds.patient_id
-               INNER JOIN person p ON p.person_id = activos_ds.patient_id
+where  tipo_dispensa_ds.data_modelo >=  novos_inscritos.data_inscricao_da
+ and cv.data_ultima_carga >= novos_inscritos.data_inscricao_da
 
 )  indicador_3 ON indicador_3.us=indicador_1.us
 
@@ -322,66 +386,112 @@ INNER JOIN
 SELECT :location AS us,
              SUM(CASE WHEN  (cv.valor_ultima_carga is not null and  cv.valor_ultima_carga <1000 ) or ( cv.carga_viral_qualitativa is not null) THEN 1  else 0  END ) activos_dt_cv
 
-      FROM (
-               select mdc_fc_estado.patient_id,
-                      max(mdc_fc_estado.data_modelo) as data_inscricao,
-                      mdc_fc_estado.status           as estado
 
-               from (select mdc.patient_id,
-                            mdc.modelodf,
-                            mdc.data_modelo as data_modelo,
-                            st.status,
-                            st.data_status,
-                            mdc.form_name,
-                            mdc.obs_group_id
+    FROM
+    (
+                  SELECT e.patient_id,
+                        /*  CASE o.value_coded
+                         WHEN  165314 THEN  'DISPENSA ANUAL DE ARV'
+                         WHEN  1098 THEN   'FLUXO RÁPIDO (FR)'
+                         WHEN  23888 THEN  'DISPENSA SEMESTRAL'
+                         WHEN  23720 THEN 'DISPENSA TRIMESTRAL (DT)'
+ 	                     ELSE  '' END AS tipo_dispensa,  */
+                             max(encounter_datetime) as data_modelo
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id        =  23739
+                        and o.value_coded       = 23720
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id
 
-                     from (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 165314 THEN 'DISPENSA ANUAL DE ARV'
-                                      WHEN 23729 THEN 'FLUXO RÁPIDO (FR)'
-                                      WHEN 23888 THEN 'DISPENSA SEMESTRAL'
-                                      WHEN 23730 THEN 'DISPENSA TRIMESTRAL (DT)'
-                                      ELSE '' END         AS modelodf,
-                                  f.name                  as form_name,
-                                  max(encounter_datetime) as data_modelo,
-                                  o.obs_group_id
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                                    INNER JOIN form f on f.form_id = e.form_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165174
-                             and o.value_coded = 23730
-                             AND o.location_id = :location
-                             and e.encounter_datetime between :startDate and :endDate
-                           group by patient_id, modelodf, o.obs_group_id, f.name
-                           order by patient_id, data_modelo DESC) mdc
+        )  tipo_dispensa_dt
 
-                         INNER JOIN
+    INNER JOIN  (
+ /************************************************************   Inscrito  na Ficha FC  e APSS ******************************************/
+select   mdc_fc_estado.patient_id, mdc_fc_estado.data_modelo as data_inscricao_da,
+             IF (mdc_fc_estado.status is not null,  mdc_fc_estado.status, NULL )  as estado ,
+             IF( mdc_fc_estado.data_status is not null, mdc_fc_estado.data_status , NULL )  as data_estado,
+              mdc_fc_estado.obs_group_id
+from (
+select mdc.patient_id ,
+       mdc.data_modelo as data_modelo,
+       st.status,
+       st.data_status,
+       mdc.obs_group_id
 
-                         (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 1256 THEN 'CASO NOVO'
-                                      WHEN 1257 THEN 'MANTER'
-                                      WHEN 1267 THEN 'COMPLETO'
-                                      ELSE o.value_coded end AS status,
-                                  max(encounter_datetime)    as data_status,
-                                  o.obs_group_id             as obs_group_id
+from (
 
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165322
-                             and o.value_coded in (1257)
-                             AND o.location_id = :location
-                           group by patient_id, status, o.obs_group_id) st on st.obs_group_id = mdc.obs_group_id and    st.patient_id=mdc.patient_id
-                           group by mdc.patient_id, mdc.modelodf, mdc.data_modelo
-                           order by mdc.patient_id, mdc.data_modelo desc) mdc_fc_estado
+                select  mdc_grouped_inicio.patient_id, max(data_modelo) as data_modelo, mdc_grouped_inicio.obs_group_id
 
-               group by mdc_fc_estado.patient_id ) activos_dt
+                FROM (SELECT e.patient_id,
+                          /* CASE o.value_coded
+                         WHEN  165314 THEN  'DISPENSA ANUAL DE ARV'
+                         WHEN  23729 THEN   'FLUXO RÁPIDO (FR)'
+                         WHEN  23888 THEN  'DISPENSA SEMESTRAL'
+                         WHEN  23730 THEN 'DISPENSA TRIMESTRAL (DT)'
+ 	                     ELSE  '' END AS modelodf,
+                         f.name as form_name, */
+                             max(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id        =  165174
+                        and o.value_coded       = 165314
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id
+
+                      union all
+
+                      SELECT e.patient_id,
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id = 165174
+                        and o.value_coded = 23732
+                        and (o.value_text = 'DA-Inicio' or o.comments = 'DA-Inicio')
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id)  mdc_grouped_inicio group by mdc_grouped_inicio.patient_id
+        )  mdc
+
+                inner join
+
+         (
+                SELECT 	e.patient_id ,
+				CASE o.value_coded
+                WHEN 1256 THEN 'CASO NOVO'
+                WHEN 1257 THEN 'MANTER'
+                WHEN 1267 THEN 'COMPLETO'
+                ELSE o.value_coded end AS status,
+                max(encounter_datetime) as data_status,
+                 o.obs_group_id as obs_group_id
+
+			FROM 	obs o
+			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
+			WHERE 	e.encounter_type IN (6,9,34,35) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165322) and o.value_coded  =1257
+			 AND o.location_id=:location
+			                AND e.encounter_datetime between :startDate and :endDate
+            group by patient_id , status, o.obs_group_id
+
+               )   st  on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id and st.data_status =mdc.data_modelo
+        )  mdc_fc_estado
+
+     ) novos_inscritos on  novos_inscritos.patient_id = tipo_dispensa_dt.patient_id
+
 
                          /* ******************************** ultima carga viral  durante o periodo de  avaliacao - DS*********** ******************************/
         INNER JOIN(
@@ -412,11 +522,13 @@ SELECT :location AS us,
 				INNER JOIN obs o ON o.encounter_id=e.encounter_id
                  WHERE e.encounter_datetime=ult_cv.data_cv
 				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,51,53) AND
-				o.voided=0 AND 	o.concept_id IN( 856, 1305) /* AND  e.encounter_datetime <= :endDate */
+				o.voided=0 AND 	o.concept_id IN( 856, 1305) AND  e.encounter_datetime between :startDate and :endDate
                 GROUP BY e.patient_id
-		) cv ON cv.patient_id =  activos_dt.patient_id
-               INNER JOIN person p ON p.person_id = activos_dt.patient_id
+		) cv ON cv.patient_id =  tipo_dispensa_dt.patient_id
+               INNER JOIN person p ON p.person_id = tipo_dispensa_dt.patient_id
 
+    where tipo_dispensa_dt.data_modelo >= novos_inscritos.data_inscricao_da
+ and cv.data_ultima_carga >= novos_inscritos.data_inscricao_da
 )  indicador_4 ON indicador_4.us=indicador_1.us
 
 INNER JOIN
@@ -425,66 +537,111 @@ INNER JOIN
 SELECT :location AS us,
              SUM(CASE WHEN  (cv.valor_ultima_carga is not null and  cv.valor_ultima_carga <1000 ) or ( cv.carga_viral_qualitativa is not null) THEN 1  else 0  END ) activos_dm_cv
 
-      FROM (
-               select mdc_fc_estado.patient_id,
-                      max(mdc_fc_estado.data_modelo) as data_inscricao,
-                      mdc_fc_estado.status           as estado
 
-               from (select mdc.patient_id,
-                            mdc.modelodf,
-                            mdc.data_modelo as data_modelo,
-                            st.status,
-                            st.data_status,
-                            mdc.form_name,
-                            mdc.obs_group_id
+  FROM
+    (
+                  SELECT e.patient_id,
+                          /* CASE o.value_coded
+                         WHEN  165314 THEN  'DISPENSA ANUAL DE ARV'
+                         WHEN  1098 THEN   'FLUXO RÁPIDO (FR)/DM'
+                         WHEN  23888 THEN  'DISPENSA SEMESTRAL'
+                         WHEN  23720 THEN 'DISPENSA TRIMESTRAL (DT)'
+ 	                     ELSE  '' END AS tipo_dispensa, */
+                             max(encounter_datetime) as data_modelo
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id        =  23739
+                        and o.value_coded       = 1098
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id
 
-                     from (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 165314 THEN 'DISPENSA ANUAL DE ARV'
-                                      WHEN 23729 THEN 'FLUXO RÁPIDO (FR)'
-                                      WHEN 23888 THEN 'DISPENSA SEMESTRAL'
-                                      WHEN 23730 THEN 'DISPENSA TRIMESTRAL (DT)'
-                                      ELSE '' END         AS modelodf,
-                                  f.name                  as form_name,
-                                  max(encounter_datetime) as data_modelo,
-                                  o.obs_group_id
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                                    INNER JOIN form f on f.form_id = e.form_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165174
-                             and o.value_coded = 23729
-                             AND o.location_id = :location
-                             and e.encounter_datetime between :startDate and :endDate
-                           group by patient_id, modelodf, o.obs_group_id, f.name
-                           order by patient_id, data_modelo DESC) mdc
+        )  tipo_dispensa_dm
+    INNER JOIN  (
+ /************************************************************   Inscrito  na Ficha FC  e APSS ******************************************/
+select   mdc_fc_estado.patient_id, mdc_fc_estado.data_modelo as data_inscricao_da,
+             IF (mdc_fc_estado.status is not null,  mdc_fc_estado.status, NULL )  as estado ,
+             IF( mdc_fc_estado.data_status is not null, mdc_fc_estado.data_status , NULL )  as data_estado,
+              mdc_fc_estado.obs_group_id
+from (
+select mdc.patient_id ,
+       mdc.data_modelo as data_modelo,
+       st.status,
+       st.data_status,
+       mdc.obs_group_id
 
-                         INNER JOIN
+from (
 
-                         (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 1256 THEN 'CASO NOVO'
-                                      WHEN 1257 THEN 'MANTER'
-                                      WHEN 1267 THEN 'COMPLETO'
-                                      ELSE o.value_coded end AS status,
-                                  max(encounter_datetime)    as data_status,
-                                  o.obs_group_id             as obs_group_id
+                select  mdc_grouped_inicio.patient_id, min(data_modelo) as data_modelo, mdc_grouped_inicio.obs_group_id
 
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165322
-                             and o.value_coded in (1257)
-                             AND o.location_id = :location
-                           group by patient_id, status, o.obs_group_id) st on st.obs_group_id = mdc.obs_group_id  and    st.patient_id=mdc.patient_id
-                           group by mdc.patient_id, mdc.modelodf, mdc.data_modelo
-                           order by mdc.patient_id, mdc.data_modelo desc) mdc_fc_estado
+                FROM (SELECT e.patient_id,
+                          /* CASE o.value_coded
+                         WHEN  165314 THEN  'DISPENSA ANUAL DE ARV'
+                         WHEN  23729 THEN   'FLUXO RÁPIDO (FR)'
+                         WHEN  23888 THEN  'DISPENSA SEMESTRAL'
+                         WHEN  23730 THEN 'DISPENSA TRIMESTRAL (DT)'
+ 	                     ELSE  '' END AS modelodf,
+                         f.name as form_name, */
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id        =  165174
+                        and o.value_coded       = 165314
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id
 
-               group by mdc_fc_estado.patient_id ) activos_dm
+                      union all
+
+                      SELECT e.patient_id,
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id = 165174
+                        and o.value_coded = 23732
+                        and (o.value_text = 'DA-Inicio' or o.comments = 'DA-Inicio')
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id)  mdc_grouped_inicio group by mdc_grouped_inicio.patient_id
+        )  mdc
+
+                inner join
+
+         (
+                SELECT 	e.patient_id ,
+				CASE o.value_coded
+                WHEN 1256 THEN 'CASO NOVO'
+                WHEN 1257 THEN 'MANTER'
+                WHEN 1267 THEN 'COMPLETO'
+                ELSE o.value_coded end AS status,
+                max(encounter_datetime) as data_status,
+                 o.obs_group_id as obs_group_id
+
+			FROM 	obs o
+			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
+			WHERE 	e.encounter_type IN (6,9,34,35) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165322) and o.value_coded  =1257
+			 AND o.location_id=:location
+			                AND e.encounter_datetime between :startDate and :endDate
+            group by patient_id , status, o.obs_group_id
+
+               )   st  on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id and st.data_status =mdc.data_modelo
+        )  mdc_fc_estado
+
+     ) novos_inscritos on  novos_inscritos.patient_id = tipo_dispensa_dm.patient_id
+
 
                          /* ******************************** ultima carga viral  durante o periodo de  avaliacao - DS*********** ******************************/
         INNER JOIN(
@@ -515,11 +672,13 @@ SELECT :location AS us,
 				INNER JOIN obs o ON o.encounter_id=e.encounter_id
                  WHERE e.encounter_datetime=ult_cv.data_cv
 				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,51,53) AND
-				o.voided=0 AND 	o.concept_id IN( 856, 1305) /* AND  e.encounter_datetime <= :endDate */
+				o.voided=0 AND 	o.concept_id IN( 856, 1305)  AND  e.encounter_datetime between :startDate and :endDate
                 GROUP BY e.patient_id
-		) cv ON cv.patient_id =  activos_dm.patient_id
-               INNER JOIN person p ON p.person_id = activos_dm.patient_id
+		) cv ON cv.patient_id =  tipo_dispensa_dm.patient_id
+               INNER JOIN person p ON p.person_id = tipo_dispensa_dm.patient_id
 
+    where tipo_dispensa_dm.data_modelo >= novos_inscritos.data_inscricao_da
+ and cv.data_ultima_carga >= novos_inscritos.data_inscricao_da
 )  indicador_6 ON indicador_6.us=indicador_1.us
 
 INNER JOIN
@@ -529,41 +688,91 @@ SELECT :location AS us,
              SUM(CASE WHEN  transf_para.patient_id is not null  THEN 1  else 0  END ) transferidos_para
 
       FROM (
-               select mdc_fc_estado.patient_id,
-                      max(mdc_fc_estado.data_modelo) as data_inscricao
+ /************************************************************   Inscrito  na Ficha FC  e APSS ****************************************************************/
 
-               from (select mdc.patient_id,
-                            mdc.modelodf,
-                            mdc.data_modelo as data_modelo
+select   mdc_fc_estado.patient_id, mdc_fc_estado.data_modelo as data_inscricao_da,
+             IF (mdc_fc_estado.status is not null,  mdc_fc_estado.status, NULL )  as estado ,
+             IF( mdc_fc_estado.data_status is not null, mdc_fc_estado.data_status , NULL )  as data_estado,
+              mdc_fc_estado.obs_group_id
+from (
+select mdc.patient_id ,
+       --  mdc.modelodf,
+       mdc.data_modelo as data_modelo,
+       st.status,
+       st.data_status,
+      --  st.value_coded,
+       -- mdc.form_name,
+       mdc.obs_group_id
 
-                     from (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 165314 THEN 'DISPENSA ANUAL DE ARV'
-                                      WHEN 23729 THEN 'FLUXO RÁPIDO (FR)'
-                                      WHEN 23888 THEN 'DISPENSA SEMESTRAL'
-                                      WHEN 23730 THEN 'DISPENSA TRIMESTRAL (DT)'
-                                      ELSE '' END         AS modelodf,
-                                  f.name                  as form_name,
-                                  max(encounter_datetime) as data_modelo,
-                                  o.obs_group_id
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                                    INNER JOIN form f on f.form_id = e.form_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165174
-                             and o.value_coded = 165314
-                             AND o.location_id = :location
-                             and e.encounter_datetime   <=  :endDate
-                           group by patient_id, modelodf, o.obs_group_id, f.name
-                           order by patient_id, data_modelo DESC) mdc
+from (
 
-                     group by mdc.patient_id
-                   ) mdc_fc_estado
+                select  mdc_grouped_inicio.patient_id, min(data_modelo) as data_modelo, mdc_grouped_inicio.obs_group_id
+
+                FROM (SELECT e.patient_id,
+                          /* CASE o.value_coded
+                         WHEN  165314 THEN  'DISPENSA ANUAL DE ARV'
+                         WHEN  23729 THEN   'FLUXO RÁPIDO (FR)'
+                         WHEN  23888 THEN  'DISPENSA SEMESTRAL'
+                         WHEN  23730 THEN 'DISPENSA TRIMESTRAL (DT)'
+ 	                     ELSE  '' END AS modelodf,
+                         f.name as form_name, */
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id        =  165174
+                        and o.value_coded       = 165314
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id
+
+                      union all
+
+                      SELECT e.patient_id,
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id = 165174
+                        and o.value_coded = 23732
+                        and (o.value_text = 'DA-Inicio' or o.comments = 'DA-Inicio')
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id)  mdc_grouped_inicio group by mdc_grouped_inicio.patient_id
+        )  mdc
+
+                inner join
+
+(
+                SELECT 	e.patient_id ,
+				CASE o.value_coded
+                WHEN 1256 THEN 'CASO NOVO'
+                WHEN 1257 THEN 'MANTER'
+                WHEN 1267 THEN 'COMPLETO'
+                ELSE o.value_coded end AS status,
+                min(encounter_datetime) as data_status,
+                 o.obs_group_id as obs_group_id
+
+			FROM 	obs o
+			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
+			WHERE 	e.encounter_type IN (6,9,34,35) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165322) and o.value_coded in (1256,1257)
+			 AND o.location_id=:location
+            group by patient_id , status, o.obs_group_id
+
+     )   st  on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id and st.data_status =mdc.data_modelo
+    )  mdc_fc_estado
 
 
-               group by mdc_fc_estado.patient_id) activos_da
+          ) novos_inscritos
+
 
                          /* ******************************** Saida TARV: 'TRANSFERIDO PARA' ********** ******************************/
         INNER JOIN(
@@ -638,7 +847,7 @@ SELECT :location AS us,
 					AND e.encounter_datetime=master_card.encounter_datetime AND
 					e.encounter_type IN (6,9) AND e.location_id=:location
 				    GROUP BY e.patient_id ) transfered_out ) all_transfered_out group by patient_id
-		)  transf_para ON transf_para.patient_id =  activos_da.patient_id
+		)  transf_para ON transf_para.patient_id =  novos_inscritos.patient_id
 
 )  indicador_7 ON indicador_7.us=indicador_1.us
 
@@ -649,41 +858,91 @@ SELECT :location AS us,
              SUM(CASE WHEN  obito.patient_id is not null  THEN 1  else 0  END ) obitos
 
       FROM (
-               select mdc_fc_estado.patient_id,
-                      max(mdc_fc_estado.data_modelo) as data_inscricao,
-                        mdc_fc_estado.modelodf
+ /************************************************************   Inscrito  na Ficha FC  e APSS ****************************************************************/
 
-               from (select mdc.patient_id,
-                            mdc.modelodf,
-                            mdc.data_modelo
+select   mdc_fc_estado.patient_id, mdc_fc_estado.data_modelo as data_inscricao_da,
+             IF (mdc_fc_estado.status is not null,  mdc_fc_estado.status, NULL )  as estado ,
+             IF( mdc_fc_estado.data_status is not null, mdc_fc_estado.data_status , NULL )  as data_estado,
+              mdc_fc_estado.obs_group_id
+from (
+select mdc.patient_id ,
+       --  mdc.modelodf,
+       mdc.data_modelo as data_modelo,
+       st.status,
+       st.data_status,
+      --  st.value_coded,
+       -- mdc.form_name,
+       mdc.obs_group_id
 
-                     from (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 165314 THEN 'DISPENSA ANUAL DE ARV'
-                                      WHEN 23729 THEN 'FLUXO RÁPIDO (FR)'
-                                      WHEN 23888 THEN 'DISPENSA SEMESTRAL'
-                                      WHEN 23730 THEN 'DISPENSA TRIMESTRAL (DT)'
-                                      ELSE '' END         AS modelodf,
-                                  f.name                  as form_name,
-                                  max(encounter_datetime) as data_modelo,
-                                  o.obs_group_id
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                                    INNER JOIN form f on f.form_id = e.form_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165174
-                             and o.value_coded = 165314
-                             AND o.location_id = :location
-                             and e.encounter_datetime   <=  :endDate
-                           group by patient_id, modelodf, o.obs_group_id, f.name
-                           order by patient_id, data_modelo DESC) mdc
+from (
 
-                           ) mdc_fc_estado
+                select  mdc_grouped_inicio.patient_id, min(data_modelo) as data_modelo, mdc_grouped_inicio.obs_group_id
+
+                FROM (SELECT e.patient_id,
+                          /* CASE o.value_coded
+                         WHEN  165314 THEN  'DISPENSA ANUAL DE ARV'
+                         WHEN  23729 THEN   'FLUXO RÁPIDO (FR)'
+                         WHEN  23888 THEN  'DISPENSA SEMESTRAL'
+                         WHEN  23730 THEN 'DISPENSA TRIMESTRAL (DT)'
+ 	                     ELSE  '' END AS modelodf,
+                         f.name as form_name, */
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id        =  165174
+                        and o.value_coded       = 165314
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id
+
+                      union all
+
+                      SELECT e.patient_id,
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id = 165174
+                        and o.value_coded = 23732
+                        and (o.value_text = 'DA-Inicio' or o.comments = 'DA-Inicio')
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id)  mdc_grouped_inicio group by mdc_grouped_inicio.patient_id
+        )  mdc
+
+                inner join
+
+(
+                SELECT 	e.patient_id ,
+				CASE o.value_coded
+                WHEN 1256 THEN 'CASO NOVO'
+                WHEN 1257 THEN 'MANTER'
+                WHEN 1267 THEN 'COMPLETO'
+                ELSE o.value_coded end AS status,
+                min(encounter_datetime) as data_status,
+                 o.obs_group_id as obs_group_id
+
+			FROM 	obs o
+			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
+			WHERE 	e.encounter_type IN (6,9,34,35) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165322) and o.value_coded in (1256,1257)
+			 AND o.location_id=:location
+            group by patient_id , status, o.obs_group_id
+
+     )   st  on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id and st.data_status =mdc.data_modelo
+    )  mdc_fc_estado
 
 
-               group by mdc_fc_estado.patient_id) activos_da
+          ) novos_inscritos
+
 
                          /* ******************************** Saida TARV: 'OBITO' ********** ******************************/
         INNER JOIN(
@@ -742,7 +1001,7 @@ SELECT :location AS us,
 			GROUP BY p.patient_id
 				    ) transfered_out 	group by patient_id
 
-		)  obito ON obito.patient_id =  activos_da.patient_id
+		)  obito ON obito.patient_id =  novos_inscritos.patient_id
 
 )  indicador_8 ON indicador_8.us=indicador_1.us
 
@@ -753,40 +1012,91 @@ SELECT :location AS us,
              SUM(CASE WHEN  abandono.patient_id is not null  THEN 1  else 0  END ) abandonos
 
       FROM (
-               select mdc_fc_estado.patient_id,
-                      max(mdc_fc_estado.data_modelo) as data_inscricao,
-                      mdc_fc_estado.modelodf           as modelodf
+ /************************************************************   Inscrito  na Ficha FC  e APSS ****************************************************************/
 
-               from (select mdc.patient_id,
-                            mdc.modelodf,
-                            mdc.data_modelo as data_modelo
-                     from (SELECT e.patient_id,
-                                  CASE o.value_coded
-                                      WHEN 165314 THEN 'DISPENSA ANUAL DE ARV'
-                                      WHEN 23729 THEN 'FLUXO RÁPIDO (FR)'
-                                      WHEN 23888 THEN 'DISPENSA SEMESTRAL'
-                                      WHEN 23730 THEN 'DISPENSA TRIMESTRAL (DT)'
-                                      ELSE '' END         AS modelodf,
-                                  f.name                  as form_name,
-                                  max(encounter_datetime) as data_modelo,
-                                  o.obs_group_id
-                           FROM obs o
-                                    INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                                    INNER JOIN form f on f.form_id = e.form_id
-                           WHERE e.encounter_type IN (6, 9, 34, 35)
-                             AND e.voided = 0
-                             AND o.voided = 0
-                             AND o.concept_id = 165174
-                             and o.value_coded = 165314
-                             AND o.location_id = :location
-                             and e.encounter_datetime   <=  :endDate
-                           group by patient_id, modelodf, o.obs_group_id, f.name
-                           order by patient_id, data_modelo DESC) mdc
+select   mdc_fc_estado.patient_id, mdc_fc_estado.data_modelo as data_inscricao_da,
+             IF (mdc_fc_estado.status is not null,  mdc_fc_estado.status, NULL )  as estado ,
+             IF( mdc_fc_estado.data_status is not null, mdc_fc_estado.data_status , NULL )  as data_estado,
+              mdc_fc_estado.obs_group_id
+from (
+select mdc.patient_id ,
+       --  mdc.modelodf,
+       mdc.data_modelo as data_modelo,
+       st.status,
+       st.data_status,
+      --  st.value_coded,
+       -- mdc.form_name,
+       mdc.obs_group_id
 
-                            ) mdc_fc_estado
+from (
+
+                select  mdc_grouped_inicio.patient_id, min(data_modelo) as data_modelo, mdc_grouped_inicio.obs_group_id
+
+                FROM (SELECT e.patient_id,
+                          /* CASE o.value_coded
+                         WHEN  165314 THEN  'DISPENSA ANUAL DE ARV'
+                         WHEN  23729 THEN   'FLUXO RÁPIDO (FR)'
+                         WHEN  23888 THEN  'DISPENSA SEMESTRAL'
+                         WHEN  23730 THEN 'DISPENSA TRIMESTRAL (DT)'
+ 	                     ELSE  '' END AS modelodf,
+                         f.name as form_name, */
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id        =  165174
+                        and o.value_coded       = 165314
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id
+
+                      union all
+
+                      SELECT e.patient_id,
+                             min(encounter_datetime) as data_modelo,
+                             o.obs_group_id
+                      FROM obs o
+                               INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+                               INNER JOIN form f on f.form_id = e.form_id
+                      WHERE e.encounter_type IN (6, 9, 34, 35)
+                        AND e.voided = 0
+                        AND o.voided = 0
+                        AND o.concept_id = 165174
+                        and o.value_coded = 23732
+                        and (o.value_text = 'DA-Inicio' or o.comments = 'DA-Inicio')
+                        AND o.location_id = :location
+                        and e.encounter_datetime between :startDate and :endDate
+                      group by patient_id)  mdc_grouped_inicio group by mdc_grouped_inicio.patient_id
+        )  mdc
+
+                inner join
+
+(
+                SELECT 	e.patient_id ,
+				CASE o.value_coded
+                WHEN 1256 THEN 'CASO NOVO'
+                WHEN 1257 THEN 'MANTER'
+                WHEN 1267 THEN 'COMPLETO'
+                ELSE o.value_coded end AS status,
+                min(encounter_datetime) as data_status,
+                 o.obs_group_id as obs_group_id
+
+			FROM 	obs o
+			INNER JOIN encounter e ON e.encounter_id=o.encounter_id
+			WHERE 	e.encounter_type IN (6,9,34,35) AND e.voided=0 AND o.voided=0 AND o.concept_id in (165322) and o.value_coded in (1256,1257)
+			 AND o.location_id=:location
+            group by patient_id , status, o.obs_group_id
+
+     )   st  on st.obs_group_id = mdc.obs_group_id and st.patient_id=mdc.patient_id and st.data_status =mdc.data_modelo
+    )  mdc_fc_estado
 
 
-               group by mdc_fc_estado.patient_id) activos_da
+          ) novos_inscritos
+
 
                          /* ******************************** Saida TARV: 'ABANDONOS' ********** ******************************/
         INNER JOIN(
@@ -836,6 +1146,8 @@ SELECT :location AS us,
 
 				    ) abandonos 	group by patient_id
 
-		)  abandono ON abandono.patient_id =  activos_da.patient_id
+		)  abandono ON abandono.patient_id =  novos_inscritos.patient_id
 
 )  indicador_9 ON indicador_9.us=indicador_1.us
+
+

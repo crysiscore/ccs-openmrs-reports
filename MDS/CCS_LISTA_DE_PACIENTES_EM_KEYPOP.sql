@@ -11,11 +11,17 @@ Change Date: 06/06/2021
 Change Reason: Bug fix
 -- CD4 & Tipo de dispensa
 
-
 Change by: Agnaldo  Samuel
 Change Date: 15/01/2026
 Change Reason: Change request
 -- CD4 semi-quantitativo
+
+Modified  By - Agnaldo  Samuel
+Modification Date - 25/02/2026
+Modification Reason:
+        • Bug fix- Ultimo cd4 entre o numerico seqmi-quantitativo e percentual
+
+
 */
 
 SELECT *
@@ -26,8 +32,9 @@ FROM
 			p.gender,
             ROUND(DATEDIFF(:endDate,p.birthdate)/365) idade_actual,
             DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') as data_inicio,
-           if(cd4.value_numeric is not null , cd4.value_numeric , if(cd4_perc.value_numeric is not null, concat(cd4_perc.value_numeric, '%') , cd4_qualit.cd4_qual )
-			 ) AS cd4,
+              cd4_last.cd4_result AS cd4,
+            DATE_FORMAT(cd4_last.data_cd4, '%d/%m/%Y') AS data_cd4,
+             cd4_last.cd4_tipo AS tipo_cd4,
             cv.carga_viral,
             inicio_real.populacaochave,
             DATE_FORMAT(inicio_real.data_keypop,'%d/%m/%Y') as data_keypop,
@@ -306,67 +313,74 @@ SELECT 	e.patient_id,
             group by patient_id
 		) linha_terapeutica ON linha_terapeutica.patient_id=inicio_real.patient_id
 
-           /****************** ****************************  CD4  Absoluto  *****************************************************/
-        LEFT JOIN(
-            SELECT e.patient_id, o.value_numeric,e.encounter_datetime
-            FROM encounter e INNER JOIN
-		    (
-            SELECT 	cd4_max.patient_id, MAX(cd4_max.encounter_datetime) AS encounter_datetime
-            FROM ( SELECT e.patient_id, o.value_numeric , encounter_datetime
-					FROM encounter e
-							INNER JOIN obs o ON o.encounter_id=e.encounter_id
-					WHERE 	e.voided=0  AND e.location_id=:location  AND
-							o.voided=0 AND o.concept_id=1695 AND e.encounter_type IN (6,9,13,53)
-				) cd4_max
-			GROUP BY patient_id ) cd4_temp
-            ON e.patient_id = cd4_temp.patient_id
-            INNER JOIN obs o ON o.encounter_id=e.encounter_id
-            WHERE e.encounter_datetime=cd4_temp.encounter_datetime AND
-			e.voided=0  AND  e.location_id=:location  AND
-            o.voided=0 AND o.concept_id = 1695 AND e.encounter_type IN (6,9,13,53)
-			GROUP BY patient_id
+        		  /****************** ****************************  CD4   ********* *****************************************************/
+      /****************** ÚLTIMO CD4 (NUMÉRICO / % / QUALITATIVO) *****************************/
+LEFT JOIN (
+    SELECT z.patient_id,
+           z.data_cd4,
+           z.cd4_result,
+           z.cd4_tipo
+    FROM (
+        SELECT d.*,
+               @rn := IF(@p = d.patient_id, @rn + 1, 1) rn,
+               @p := d.patient_id
+        FROM (
+            /* CD4 NUMÉRICO */
+            SELECT e.patient_id,
+                   e.encounter_datetime AS data_cd4,
+                   CAST(o.value_numeric AS CHAR) AS cd4_result,
+                   'NUMERICO' AS cd4_tipo
+            FROM encounter e
+            INNER JOIN obs o ON o.encounter_id = e.encounter_id
+            WHERE e.voided = 0
+              AND o.voided = 0
+              AND e.location_id = :location
+              AND e.encounter_type IN (6,9,13,53)
+              AND o.concept_id = 1695
+              AND o.value_numeric IS NOT NULL
 
-		) cd4 ON cd4.patient_id =  inicio_real.patient_id
-		/****************** ****************************  CD4  Percentual  *****************************************************/
-        LEFT JOIN(
-            SELECT e.patient_id, o.value_numeric,e.encounter_datetime
-            FROM encounter e INNER JOIN
-		    (
-            SELECT 	cd4_max.patient_id, MAX(cd4_max.encounter_datetime) AS encounter_datetime
-            FROM (
-					SELECT 	 e.patient_id, o.value_numeric , encounter_datetime
-					FROM encounter e
-							INNER JOIN obs o ON o.encounter_id=e.encounter_id
-					WHERE 	e.voided=0  AND  e.location_id=:location  AND
-							o.voided=0 AND o.concept_id=730 AND e.encounter_type in (6,9,13,53)  )cd4_max
-			GROUP BY patient_id ) cd4_temp
-            ON e.patient_id = cd4_temp.patient_id
-            INNER JOIN obs o ON o.encounter_id=e.encounter_id
-            WHERE e.encounter_datetime=cd4_temp.encounter_datetime AND
-			e.voided=0  AND  e.location_id=:location  AND
-            o.voided=0 AND o.concept_id =730  AND e.encounter_type in (6,9,13,53)
-			GROUP BY patient_id
+            UNION ALL
 
-		) cd4_perc ON cd4_perc.patient_id =  inicio_real.patient_id
-            	/****************** ****************************  CD4  Qualitativo  *****************************************************/
-        LEFT JOIN(
-        SELECT 	e.patient_id,
-				CASE o.value_coded
-						WHEN 165513  THEN '<= 200'
-					WHEN 1254  THEN '> 200'
-				ELSE '' END AS cd4_qual,
-                encounter_datetime AS data_ult_cd4
-				FROM 	(
-							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_ult_linhat
-							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
-							WHERE e.encounter_type IN (6,9, 13,51) AND e.voided=0 AND o.voided=0 AND o.concept_id = 165515
-							GROUP BY patient_id
-				) ult_cd4_qual
-			INNER JOIN encounter e ON e.patient_id=ult_cd4_qual.patient_id
-            INNER JOIN obs o ON o.encounter_id=e.encounter_id
-			WHERE 	e.encounter_type IN (6,9, 13,51) AND ult_cd4_qual.data_ult_linhat =e.encounter_datetime AND e.voided=0 AND o.voided=0 AND o.concept_id = 165515
-            GROUP BY patient_id
-		) cd4_qualit ON cd4_qualit.patient_id =  inicio_real.patient_id
+            /* CD4 PERCENTUAL */
+            SELECT e.patient_id,
+                   e.encounter_datetime AS data_cd4,
+                   CONCAT(CAST(o.value_numeric AS CHAR), '%') AS cd4_result,
+                   'PERCENTUAL' AS cd4_tipo
+            FROM encounter e
+            INNER JOIN obs o ON o.encounter_id = e.encounter_id
+            WHERE e.voided = 0
+              AND o.voided = 0
+              AND e.location_id = :location
+              AND e.encounter_type IN (6,9,13,53)
+              AND o.concept_id = 730
+              AND o.value_numeric IS NOT NULL
+
+            UNION ALL
+
+            /* CD4 QUALITATIVO */
+            SELECT e.patient_id,
+                   e.encounter_datetime AS data_cd4,
+                   CASE o.value_coded
+                        WHEN 165513 THEN '<= 200'
+                        WHEN 1254   THEN '> 200'
+                        ELSE ''
+                   END AS cd4_result,
+                   'QUALITATIVO' AS cd4_tipo
+            FROM encounter e
+            INNER JOIN obs o ON o.encounter_id = e.encounter_id
+            WHERE e.voided = 0
+              AND o.voided = 0
+              AND e.location_id = :location
+              AND e.encounter_type IN (6,9,13,51)
+              AND o.concept_id = 165515
+              AND o.value_coded IS NOT NULL
+
+        ) d
+        CROSS JOIN (SELECT @p := NULL, @rn := 0) vars
+        ORDER BY d.patient_id, d.data_cd4 DESC
+    ) z
+    WHERE z.rn = 1
+) cd4_last ON cd4_last.patient_id = inicio_real.patient_id
 
 
           /* ******************************** ultima carga viral *********** ******************************/

@@ -1,8 +1,8 @@
 /*
 Name CCS LISTA DE MONITORIA DE PACIENTES INSCRITOS NA DISPENSA ANUAL -DA
 Description-
-              - no âmbito do projecto de implementação da DA em Gaza, precisaremos de algumas listas para apoio as equipas para monitoria dos pacientes neste modelo de dispensa.
-Created by: Agnaldo  Samuel
+                 -      no âmbito do projecto de implementação da DA em Gaza, precisaremos de algumas listas para apoio as equipas para monitoria dos pacientes neste modelo de dispensa.
+Created by:    Agnaldo  Samuel
 Change Date: 06/01/2026
 */
 
@@ -81,7 +81,6 @@ from (
                              o.obs_group_id
                       FROM obs o
                                INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                               INNER JOIN form f on f.form_id = e.form_id
                       WHERE e.encounter_type IN (6, 9, 34, 35)
                         AND e.voided = 0
                         AND o.voided = 0
@@ -761,7 +760,7 @@ LEFT JOIN
             ON e2.patient_id = i2.patient_id
            AND e2.voided = 0
            AND e2.encounter_type IN (6, 9)
-           AND e2.encounter_datetime > i2.data_modelo
+           AND e2.encounter_datetime >= i2.data_modelo
         INNER JOIN obs o2
             ON o2.encounter_id = e2.encounter_id
            AND o2.voided = 0
