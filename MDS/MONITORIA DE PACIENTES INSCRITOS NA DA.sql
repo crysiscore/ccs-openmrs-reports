@@ -1,9 +1,27 @@
 /*
-Name CCS LISTA DE MONITORIA DE PACIENTES INSCRITOS NA DISPENSA ANUAL -DA
+Name: CCS LISTA DE MONITORIA DE PACIENTES INSCRITOS NA DISPENSA ANUAL -DA
+
+
 Description-
-                 -      no âmbito do projecto de implementação da DA em Gaza, precisaremos de algumas listas para apoio as equipas para monitoria dos pacientes neste modelo de dispensa.
+      - No âmbito do projecto de implementação da DA em Gaza, precisaremos de algumas listas para apoio as equipas
+        para monitoria dos pacientes neste modelo de dispensa.
 Created by:    Agnaldo  Samuel
 Change Date: 06/01/2026
+
+Revisao:   Agnaldo  Samuel
+Change Date: 18/05/2026
+- Revisao do TPT (inicio e fim)
+
+Revisao:   Codex / Agnaldo Samuel
+Change Date: 13/07/2026
+- Incluido encounter 53 (Ficha Resumo) na leitura do inicio e fim de TPT
+- Para encounter 53, a data clinica do TPT passa a usar obs_datetime do conceito 165308
+- Os blocos de TPT passam a buscar historico ate :endDate, sem restringir por :startDate
+- Mantida a selecao de um unico inicio mais antigo e um unico fim mais recente por paciente
+
+Change Date: 07/06/2026
+- Inclusao da Ficha Resumo na Busca do TPT
+
 */
 
 SELECT *
@@ -18,24 +36,26 @@ FROM
             DATE_FORMAT(inicio_real.data_inicio,'%d/%m/%Y') AS data_inicio_tarv,
             DATE_FORMAT(inscrito_da.data_inscricao_da,'%d/%m/%Y') AS data_inscricao_da,
              inscrito_da.estado AS estado_inscricao_da,
-            tipo_dispensa_depois_da.tipodispensa as tipo_dispensa_depois_da,
             tipo_dispensa_antes_da.tipodispensa as tipo_dispensa_antes_da,
-             DATE_FORMAT(tipo_dispensa_depois_da.data_ult_tipo_dis,'%d/%m/%Y')  as data_tipo_dispensa_depois_da,
+             DATE_FORMAT(tipo_dispensa_antes_da.data_ult_tipo_dis,'%d/%m/%Y')  as data_tipo_dispensa_antes_da,
+            tipo_dispensa_depois_da.tipodispensa as tipo_dispensa_depois_da,
+            DATE_FORMAT(tipo_dispensa_depois_da.data_ult_tipo_dis,'%d/%m/%Y')  as data_tipo_dispensa_depois_da,
+            DATE_FORMAT(ult_ped_cv_antes_da.data_pedido_cv,'%d/%m/%Y') AS data_pedido_antes_inscricao,
+            DATE_FORMAT(ult_ped_cv.data_pedido_cv,'%d/%m/%Y') AS data_pedido_apos_inscricao,
              cv_antes_da.valor_ultima_carga   AS carga_viral_antes_da,
             DATE_FORMAT(cv_antes_da.data_ultima_carga,'%d/%m/%Y') AS data_ult_carga_v_antes_da ,
-            DATE_FORMAT(cv.data_ultima_carga,'%d/%m/%Y') AS data_ult_carga_v_depois_da ,
              cv.valor_ultima_carga  as carga_viral_numeric_depois_da,
+            DATE_FORMAT(cv.data_ultima_carga,'%d/%m/%Y') AS data_ult_carga_v_depois_da ,
             DATE_FORMAT(in_3hp_tpi.data_inicio_tpt,'%d/%m/%Y') AS data_inicio_tpt,
-            DATE_FORMAT(ult_ped_cv.data_pedido_cv,'%d/%m/%Y') AS data_pedido_apos_inscricao,
-            DATE_FORMAT(gravida_real.data_gravida,'%d/%m/%Y') AS data_gravida,
- 			DATE_FORMAT(lactante_real.date_enrolled,'%d/%m/%Y') AS data_lactante,
  			DATE_FORMAT(end_tpt.data_end_tpt,'%d/%m/%Y') AS data_fim_tpt ,
  			if( marcado_tb.tratamento_tb IS NULL, NULL, CONCAT( marcado_tb.tratamento_tb, ' - ',   DATE_FORMAT(marcado_tb.data_marcado_tb,'%d/%m/%Y' ))) AS trat_tb,
+            DATE_FORMAT(gravida_real.data_gravida,'%d/%m/%Y') AS data_gravida,
+ 			DATE_FORMAT(lactante_real.date_enrolled,'%d/%m/%Y') AS data_lactante,
  			DATE_FORMAT(ult_seguimento.encounter_datetime ,'%d/%m/%Y') AS data_ult_visita_2,
             DATE_FORMAT(ult_seguimento.value_datetime,'%d/%m/%Y') AS data_proxima_visita,
             DATE_FORMAT(ultimoFila.encounter_datetime,'%d/%m/%Y') AS data_ult_levantamento,
  		    DATE_FORMAT(ultimoFila.value_datetime,'%d/%m/%Y')   AS proximo_marcado,
-            if( DATEDIFF(:endDate,ult_seguimento.value_datetime)<=28, 'ACTIVO EM TARV',
+            if( DATEDIFF(:endDate,ultimoFila.value_datetime)<=28, 'ACTIVO EM TARV',
                 if(saida_real.patient_id IS NOT NULL, saida_real.estado, 'ABANDONO NAO NOTIFICADO')
                 )  AS estado_paciente ,
              profissao.profissao,
@@ -254,15 +274,13 @@ Left Join  (
            and e.location_id=:location
          group by p.patient_id) profissao ON profissao.patient_id =  inscrito_da.patient_id
 
-  /**  ****************	Ultimo Pedido de CV ba ficha clinica apos inscricao **************************** **/
+  /**  ****************	Ultimo Pedido de CV antes e apos inscricao **************************** **/
        LEFT JOIN (
 SELECT
     i.patient_id,
-    i.data_modelo,
     pcv.data_pedido_cv
 FROM
 (
-    /* INICIO_DA: data de inscrição no modelo (data_modelo) no período */
     SELECT
         mdc_grouped_inicio.patient_id,
         MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
@@ -303,13 +321,12 @@ FROM
 ) i
 LEFT JOIN
 (
-    /* Último pedido de CV APÓS inscrição (data_modelo) */
+    /* Último pedido de CV APÓS inscrição; desempata pela maior data e encounter_id. */
     SELECT
         i2.patient_id,
-        MAX(e2.encounter_datetime) AS data_pedido_cv
+        e2.encounter_datetime AS data_pedido_cv
     FROM
     (
-        /* repetir INICIO_DA aqui (MySQL 5.6 não tem CTE) */
         SELECT
             mdc_grouped_inicio.patient_id,
             MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
@@ -353,19 +370,161 @@ LEFT JOIN
        AND e2.voided = 0
        AND e2.location_id = :location
        AND e2.encounter_type IN (6, 9)
-       AND e2.encounter_datetime > i2.data_modelo   /* APÓS inscrição */
+       AND e2.encounter_datetime > i2.data_modelo
     INNER JOIN obs pedido
         ON pedido.encounter_id = e2.encounter_id
        AND pedido.voided = 0
        AND pedido.concept_id = 23722
        AND pedido.value_coded = 856
-    GROUP BY i2.patient_id
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM encounter e3
+        INNER JOIN obs pedido3
+            ON pedido3.encounter_id = e3.encounter_id
+           AND pedido3.voided = 0
+           AND pedido3.concept_id = 23722
+           AND pedido3.value_coded = 856
+        WHERE e3.patient_id = e2.patient_id
+          AND e3.voided = 0
+          AND e3.location_id = e2.location_id
+          AND e3.encounter_type IN (6, 9)
+          AND e3.encounter_datetime > i2.data_modelo
+          AND (
+                e3.encounter_datetime > e2.encounter_datetime
+                OR (
+                    e3.encounter_datetime = e2.encounter_datetime
+                    AND e3.encounter_id > e2.encounter_id
+                )
+              )
+    )
 ) pcv
 ON pcv.patient_id = i.patient_id
-
-
-
            ) ult_ped_cv ON ult_ped_cv.patient_id =  inscrito_da.patient_id
+       LEFT JOIN (
+SELECT
+    i.patient_id,
+    pcv.data_pedido_cv
+FROM
+(
+    SELECT
+        mdc_grouped_inicio.patient_id,
+        MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
+    FROM
+    (
+        SELECT
+            e.patient_id,
+            MIN(e.encounter_datetime) AS data_modelo
+        FROM obs o
+        INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+        WHERE e.encounter_type IN (6, 9, 34, 35)
+          AND e.voided = 0
+          AND o.voided = 0
+          AND o.concept_id = 165174
+          AND o.value_coded = 165314
+          AND o.location_id = :location
+          AND e.encounter_datetime BETWEEN :startDate AND :endDate
+        GROUP BY e.patient_id
+
+        UNION ALL
+
+        SELECT
+            e.patient_id,
+            MIN(e.encounter_datetime) AS data_modelo
+        FROM obs o
+        INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+        WHERE e.encounter_type IN (6, 9, 34, 35)
+          AND e.voided = 0
+          AND o.voided = 0
+          AND o.concept_id = 165174
+          AND o.value_coded = 23732
+          AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
+          AND o.location_id = :location
+          AND e.encounter_datetime BETWEEN :startDate AND :endDate
+        GROUP BY e.patient_id
+    ) mdc_grouped_inicio
+    GROUP BY mdc_grouped_inicio.patient_id
+) i
+LEFT JOIN
+(
+    /* Último pedido de CV ANTES da inscrição; desempata pela maior data e encounter_id. */
+    SELECT
+        i2.patient_id,
+        e2.encounter_datetime AS data_pedido_cv
+    FROM
+    (
+        SELECT
+            mdc_grouped_inicio.patient_id,
+            MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
+        FROM
+        (
+            SELECT
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 165314
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
+
+            UNION ALL
+
+            SELECT
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 23732
+              AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
+        ) mdc_grouped_inicio
+        GROUP BY mdc_grouped_inicio.patient_id
+    ) i2
+    INNER JOIN encounter e2
+        ON e2.patient_id = i2.patient_id
+       AND e2.voided = 0
+       AND e2.location_id = :location
+       AND e2.encounter_type IN (6, 9)
+       AND e2.encounter_datetime < i2.data_modelo
+    INNER JOIN obs pedido
+        ON pedido.encounter_id = e2.encounter_id
+       AND pedido.voided = 0
+       AND pedido.concept_id = 23722
+       AND pedido.value_coded = 856
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM encounter e3
+        INNER JOIN obs pedido3
+            ON pedido3.encounter_id = e3.encounter_id
+           AND pedido3.voided = 0
+           AND pedido3.concept_id = 23722
+           AND pedido3.value_coded = 856
+        WHERE e3.patient_id = e2.patient_id
+          AND e3.voided = 0
+          AND e3.location_id = e2.location_id
+          AND e3.encounter_type IN (6, 9)
+          AND e3.encounter_datetime < i2.data_modelo
+          AND (
+                e3.encounter_datetime > e2.encounter_datetime
+                OR (
+                    e3.encounter_datetime = e2.encounter_datetime
+                    AND e3.encounter_id > e2.encounter_id
+                )
+              )
+    )
+) pcv
+ON pcv.patient_id = i.patient_id
+           ) ult_ped_cv_antes_da ON ult_ped_cv_antes_da.patient_id =  inscrito_da.patient_id
     /************************* Crag **********************************************/
     LEFT JOIN (SELECT
         e.patient_id,
@@ -564,10 +723,10 @@ FROM
 ) i
 LEFT JOIN
 (
-    /* TIPO DISPENSA: último tipo de dispensa ANTES do data_modelo (por paciente) */
+    /* TIPO DISPENSA: último tipo de dispensa ANTES do data_modelo, com desempate por encounter_id. */
     SELECT
-        m.patient_id,
-        m.data_ult_tipo_dis,
+        i2.patient_id,
+        e2.encounter_datetime AS data_ult_tipo_dis,
         CASE o.value_coded
             WHEN 23888  THEN 'DISPENSA SEMESTRAL'
             WHEN 1098   THEN 'DISPENSA MENSAL'
@@ -578,72 +737,74 @@ LEFT JOIN
         END AS tipodispensa
     FROM
     (
-        /* pega a maior data do tipo de dispensa que seja < data_modelo */
         SELECT
-            i2.patient_id,
-            MAX(e2.encounter_datetime) AS data_ult_tipo_dis
+            mdc_grouped_inicio.patient_id,
+            MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
         FROM
         (
-            /* repetir INICIO_DA aqui (MySQL 5.6 não tem CTE) */
             SELECT
-                mdc_grouped_inicio.patient_id,
-                MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
-            FROM
-            (
-                SELECT
-                    e.patient_id,
-                    MIN(e.encounter_datetime) AS data_modelo
-                FROM obs o
-                INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                WHERE e.encounter_type IN (6, 9, 34, 35)
-                  AND e.voided = 0
-                  AND o.voided = 0
-                  AND o.concept_id = 165174
-                  AND o.value_coded = 165314
-                  AND o.location_id = :location
-                  AND e.encounter_datetime BETWEEN :startDate AND :endDate
-                GROUP BY e.patient_id
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 165314
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
 
-                UNION ALL
+            UNION ALL
 
-                SELECT
-                    e.patient_id,
-                    MIN(e.encounter_datetime) AS data_modelo
-                FROM obs o
-                INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                WHERE e.encounter_type IN (6, 9, 34, 35)
-                  AND e.voided = 0
-                  AND o.voided = 0
-                  AND o.concept_id = 165174
-                  AND o.value_coded = 23732
-                  AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
-                  AND o.location_id = :location
-                  AND e.encounter_datetime BETWEEN :startDate AND :endDate
-                GROUP BY e.patient_id
-            ) mdc_grouped_inicio
-            GROUP BY mdc_grouped_inicio.patient_id
-        ) i2
-        INNER JOIN encounter e2
-            ON e2.patient_id = i2.patient_id
-           AND e2.voided = 0
-           AND e2.encounter_type IN (6, 9)
-           AND e2.encounter_datetime < i2.data_modelo
-        INNER JOIN obs o2
-            ON o2.encounter_id = e2.encounter_id
-           AND o2.voided = 0
-           AND o2.concept_id = 23739
-           AND o2.location_id = :location
-        GROUP BY i2.patient_id
-    ) m
-    INNER JOIN encounter e
-        ON e.patient_id = m.patient_id
-       AND e.encounter_datetime = m.data_ult_tipo_dis
-       AND e.voided = 0
-       AND e.encounter_type IN (6, 9)
+            SELECT
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 23732
+              AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
+        ) mdc_grouped_inicio
+        GROUP BY mdc_grouped_inicio.patient_id
+    ) i2
+    INNER JOIN encounter e2
+        ON e2.patient_id = i2.patient_id
+       AND e2.voided = 0
+       AND e2.encounter_type IN (6, 9)
+       AND e2.encounter_datetime < i2.data_modelo
     INNER JOIN obs o
-        ON o.encounter_id = e.encounter_id
+        ON o.encounter_id = e2.encounter_id
        AND o.voided = 0
        AND o.concept_id = 23739
+       AND o.location_id = :location
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM encounter e3
+        INNER JOIN obs o3
+            ON o3.encounter_id = e3.encounter_id
+           AND o3.voided = 0
+           AND o3.concept_id = 23739
+           AND o3.location_id = :location
+        WHERE e3.patient_id = e2.patient_id
+          AND e3.voided = 0
+          AND e3.encounter_type IN (6, 9)
+          AND e3.encounter_datetime < i2.data_modelo
+          AND (
+                e3.encounter_datetime > e2.encounter_datetime
+                OR (
+                    e3.encounter_datetime = e2.encounter_datetime
+                    AND e3.encounter_id > e2.encounter_id
+                )
+              )
+    )
 ) td
 ON td.patient_id = i.patient_id
 		) tipo_dispensa_antes_da ON tipo_dispensa_antes_da.patient_id=inscrito_da.patient_id
@@ -697,10 +858,10 @@ FROM
 ) i
 LEFT JOIN
 (
-    /* TIPO DISPENSA: último tipo de dispensa ANTES do data_modelo (por paciente) */
+    /* TIPO DISPENSA: último tipo de dispensa APOS o data_modelo, com desempate por encounter_id. */
     SELECT
-        m.patient_id,
-        m.data_ult_tipo_dis,
+        i2.patient_id,
+        e2.encounter_datetime AS data_ult_tipo_dis,
         CASE o.value_coded
             WHEN 23888  THEN 'DISPENSA SEMESTRAL'
             WHEN 1098   THEN 'DISPENSA MENSAL'
@@ -711,180 +872,194 @@ LEFT JOIN
         END AS tipodispensa
     FROM
     (
-        /* pega a maior data do tipo de dispensa que seja < data_modelo */
         SELECT
-            i2.patient_id,
-            MAX(e2.encounter_datetime) AS data_ult_tipo_dis
+            mdc_grouped_inicio.patient_id,
+            MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
         FROM
         (
-            /* repetir INICIO_DA aqui (MySQL 5.6 não tem CTE) */
             SELECT
-                mdc_grouped_inicio.patient_id,
-                MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
-            FROM
-            (
-                SELECT
-                    e.patient_id,
-                    MIN(e.encounter_datetime) AS data_modelo
-                FROM obs o
-                INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                WHERE e.encounter_type IN (6, 9, 34, 35)
-                  AND e.voided = 0
-                  AND o.voided = 0
-                  AND o.concept_id = 165174
-                  AND o.value_coded = 165314
-                  AND o.location_id = :location
-                  AND e.encounter_datetime BETWEEN :startDate AND :endDate
-                GROUP BY e.patient_id
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 165314
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
 
-                UNION ALL
+            UNION ALL
 
-                SELECT
-                    e.patient_id,
-                    MIN(e.encounter_datetime) AS data_modelo
-                FROM obs o
-                INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                WHERE e.encounter_type IN (6, 9, 34, 35)
-                  AND e.voided = 0
-                  AND o.voided = 0
-                  AND o.concept_id = 165174
-                  AND o.value_coded = 23732
-                  AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
-                  AND o.location_id = :location
-                  AND e.encounter_datetime BETWEEN :startDate AND :endDate
-                GROUP BY e.patient_id
-            ) mdc_grouped_inicio
-            GROUP BY mdc_grouped_inicio.patient_id
-        ) i2
-        INNER JOIN encounter e2
-            ON e2.patient_id = i2.patient_id
-           AND e2.voided = 0
-           AND e2.encounter_type IN (6, 9)
-           AND e2.encounter_datetime >= i2.data_modelo
-        INNER JOIN obs o2
-            ON o2.encounter_id = e2.encounter_id
-           AND o2.voided = 0
-           AND o2.concept_id = 23739
-           AND o2.location_id = :location
-        GROUP BY i2.patient_id
-    ) m
-    INNER JOIN encounter e
-        ON e.patient_id = m.patient_id
-       AND e.encounter_datetime = m.data_ult_tipo_dis
-       AND e.voided = 0
-       AND e.encounter_type IN (6, 9)
+            SELECT
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 23732
+              AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
+        ) mdc_grouped_inicio
+        GROUP BY mdc_grouped_inicio.patient_id
+    ) i2
+    INNER JOIN encounter e2
+        ON e2.patient_id = i2.patient_id
+       AND e2.voided = 0
+       AND e2.encounter_type IN (6, 9)
+       AND e2.encounter_datetime >= i2.data_modelo
     INNER JOIN obs o
-        ON o.encounter_id = e.encounter_id
+        ON o.encounter_id = e2.encounter_id
        AND o.voided = 0
        AND o.concept_id = 23739
+       AND o.location_id = :location
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM encounter e3
+        INNER JOIN obs o3
+            ON o3.encounter_id = e3.encounter_id
+           AND o3.voided = 0
+           AND o3.concept_id = 23739
+           AND o3.location_id = :location
+        WHERE e3.patient_id = e2.patient_id
+          AND e3.voided = 0
+          AND e3.encounter_type IN (6, 9)
+          AND e3.encounter_datetime >= i2.data_modelo
+          AND (
+                e3.encounter_datetime > e2.encounter_datetime
+                OR (
+                    e3.encounter_datetime = e2.encounter_datetime
+                    AND e3.encounter_id > e2.encounter_id
+                )
+              )
+    )
 ) td
 ON td.patient_id = i.patient_id
 		) tipo_dispensa_depois_da ON tipo_dispensa_depois_da.patient_id=inscrito_da.patient_id
 
-          /**********************  Inicio de TPI  ********************************************************************/
+          /**********************  Inicio de TPT  ********************************************************************/
 		    LEFT JOIN
-              (select inicio_tpt.patient_id, min(inicio_tpt.data_inicio_tpi) data_inicio_tpt
-
-                       from (
-                                /*	Inicio  3HP na Ficha Clinica, Seguimento e Resumo	     */
-                                select p.patient_id, min(estadoProfilaxia.obs_datetime) data_inicio_tpi
-                                from patient p
-                                inner join encounter e on p.patient_id = e.patient_id
-                                inner join obs profilaxia3HP on profilaxia3HP.encounter_id = e.encounter_id
-                                inner join obs estadoProfilaxia on estadoProfilaxia.encounter_id = e.encounter_id
-                                  where p.voided = 0
-                                  and e.voided = 0
-                                  and profilaxia3HP.voided = 0
-                                  and estadoProfilaxia.voided = 0
-                                  and profilaxia3HP.concept_id = 23985
-                                  and profilaxia3HP.value_coded = 23954
-                                  and estadoProfilaxia.concept_id = 165308
-                                  and estadoProfilaxia.value_coded = 1256
-                                  and e.encounter_type in (6, 9, 53)
-                                  and e.location_id = :location
-                                  and estadoProfilaxia.obs_datetime <=  :endDate and :endDate
-                                group by p.patient_id
-                                union
-                                /* Inicio Usando Outras prescrições DT-3HP na Ficha Clinica  */
-                                select p.patient_id, min(outrasPrescricoesDT3HP.obs_datetime) data_inicio_tpi
-                                from patient p
-                                         inner join encounter e on p.patient_id = e.patient_id
-                                         inner join obs outrasPrescricoesDT3HP
-                                                    on outrasPrescricoesDT3HP.encounter_id = e.encounter_id
-                                where p.voided = 0
-                                  and e.voided = 0
-                                  and outrasPrescricoesDT3HP.voided = 0
-                                  and outrasPrescricoesDT3HP.obs_datetime <=  :endDate
-                                  and outrasPrescricoesDT3HP.concept_id = 1719
-                                  and outrasPrescricoesDT3HP.value_coded = 165307
-                                  and e.encounter_type in (6)
-                                  and e.location_id = :location
-                                group by p.patient_id
-                                union
-                                  /*
-                                  Patients who have Regime de TPT with the values “3HP or 3HP +
-                                  Piridoxina” and “Seguimento de tratamento TPT” = (‘Inicio’ or ‘Re-Inicio’)
-                                  marked on Ficha de Levantamento de TPT (FILT)  during the previous
-                                  reporting period (3HP Start Date)
-                                  */
-                                 select p.patient_id, min(seguimentoTPT.obs_datetime) data_inicio_tpi
-                                            from patient p
-                                                     inner join encounter e on p.patient_id = e.patient_id
-                                                     inner join obs regime3HP on regime3HP.encounter_id = e.encounter_id
-                                                     inner join obs seguimentoTPT on seguimentoTPT.encounter_id = e.encounter_id
-                                            where e.voided = 0
-                                              and p.voided = 0
-                                              and seguimentoTPT.obs_datetime <=  :endDate
-                                              and regime3HP.voided = 0
-                                              and regime3HP.concept_id = 23985
-                                              and regime3HP.value_coded in (23954, 23984)
-                                              and e.encounter_type = 60
-                                              and e.location_id = :location
-                                              and seguimentoTPT.voided = 0
-                                              and seguimentoTPT.concept_id = 23987
-                                              and seguimentoTPT.value_coded in (1256, 1705)
-                                            group by p.patient_id
-
-                                            union
-
-                                                                                /*
-                                                    Patients who have  (Profilaxia
-                                                    TPT with the value “Isoniazida (INH)” and Estado da Profilaxia with the
-                                                    value “Inicio (I)”) marked on Ficha Clínica , Ficha Seguimento and Ficha Resumo
-                                             */
-
-                                            select p.patient_id, min(obsInicioINH.obs_datetime) data_inicio_tpi
-                                            from patient p
-                                                inner join encounter e on p.patient_id = e.patient_id
-                                                inner join obs o on o.encounter_id = e.encounter_id
-                                                inner join obs obsInicioINH on obsInicioINH.encounter_id = e.encounter_id
-                                            where e.voided=0 and p.voided=0 and o.voided=0 and e.encounter_type in (6,9,53)and o.concept_id=23985 and o.value_coded=656
-                                                and obsInicioINH.concept_id=165308 and obsInicioINH.value_coded=1256 and obsInicioINH.voided=0
-                                                and obsInicioINH.obs_datetime <=  :endDate and  e.location_id=:location
-                                                group by p.patient_id
-
-
-                                            union
-
-                                            /*
-                                             *   Patients who have Regime de TPT with the values (“Isoniazida” or
-                                                    “Isoniazida + Piridoxina”) and “Seguimento de tratamento TPT” = (‘Inicio’ or
-                                                    ‘Re-Inicio’) marked on Ficha de Levantamento de TPT (FILT) during the
-                                                    previous reporting period (INH Start Date)
-                                             * */
-                                            select p.patient_id,min(seguimentoTPT.obs_datetime) data_inicio_tpi
-                                            from	patient p
-                                                inner join encounter e on p.patient_id=e.patient_id
-                                                inner join obs o on o.encounter_id=e.encounter_id
-                                                inner join obs seguimentoTPT on seguimentoTPT.encounter_id=e.encounter_id
-                                            where e.voided=0 and p.voided=0 and seguimentoTPT.obs_datetime <=  :endDate
-                                                and seguimentoTPT.voided =0 and seguimentoTPT.concept_id = 23987 and seguimentoTPT.value_coded in (1256,1705)
-                                                and o.voided=0 and o.concept_id=23985 and o.value_coded in (656,23982) and e.encounter_type=60 and  e.location_id=:location
-                                                group by p.patient_id
-
-
-                   ) inicio_tpt
-                       group by inicio_tpt.patient_id)  in_3hp_tpi  ON in_3hp_tpi.patient_id=inscrito_da.patient_id
+              (
+                  /* Historico de inicio de TPT ate :endDate.
+                     Inclui encounter 53 (Ficha Resumo); neste caso usa obs_datetime
+                     do 165308 como data clinica do evento, porque encounter_datetime
+                     representa apenas a data de registo/resumo. */
+                  SELECT
+                      e.patient_id,
+                      CASE
+                          WHEN e.encounter_type = 53 AND estado_tpt.concept_id = 165308 THEN estado_tpt.obs_datetime
+                          ELSE e.encounter_datetime
+                      END AS data_inicio_tpt
+                  FROM patient p
+                  INNER JOIN encounter e
+                      ON e.patient_id = p.patient_id
+                  INNER JOIN obs regime
+                      ON regime.encounter_id = e.encounter_id
+                     AND regime.voided = 0
+                     AND regime.concept_id = 23985
+                     AND regime.value_coded IN (656, 23982, 165306, 23983, 23954, 23984, 165305)
+                  INNER JOIN obs estado_tpt
+                      ON estado_tpt.encounter_id = e.encounter_id
+                     AND estado_tpt.voided = 0
+                     AND estado_tpt.value_coded = 1256
+                     AND (
+                            (e.encounter_type IN (6, 9 ,53) AND estado_tpt.concept_id = 165308)
+                            OR (e.encounter_type = 60 AND estado_tpt.concept_id = 23987)
+                         )
+                  WHERE p.voided = 0
+                    AND e.voided = 0
+                    AND e.encounter_type IN (6, 9, 53, 60)
+                    AND e.location_id = :location
+                    /* Nao limita por :startDate para permitir mostrar TPT historico
+                       de pacientes inscritos na DA dentro do periodo do relatorio. */
+                    AND (
+                          CASE
+                              WHEN e.encounter_type = 53 AND estado_tpt.concept_id = 165308 THEN estado_tpt.obs_datetime
+                              ELSE e.encounter_datetime
+                          END
+                        ) < DATE_ADD(:endDate, INTERVAL 1 DAY)
+                    AND NOT EXISTS (
+                        /* Mantem apenas o primeiro inicio historico do paciente
+                           considerando a data clinica do TPT. */
+                        SELECT 1
+                        FROM encounter e2
+                        INNER JOIN obs regime2
+                            ON regime2.encounter_id = e2.encounter_id
+                           AND regime2.voided = 0
+                           AND regime2.concept_id = 23985
+                           AND regime2.value_coded IN (656, 23982, 165306, 23983, 23954, 23984, 165305)
+                        INNER JOIN obs estado_tpt2
+                            ON estado_tpt2.encounter_id = e2.encounter_id
+                           AND estado_tpt2.voided = 0
+                           AND estado_tpt2.value_coded = 1256
+                           AND (
+                                  (e2.encounter_type IN (6, 9 ,53) AND estado_tpt2.concept_id = 165308)
+                                  OR (e2.encounter_type = 60 AND estado_tpt2.concept_id = 23987)
+                               )
+                        WHERE e2.voided = 0
+                          AND e2.patient_id = e.patient_id
+                          AND e2.encounter_type IN (6, 9, 53, 60)
+                          AND e2.location_id = e.location_id
+                          AND (
+                                CASE
+                                    WHEN e2.encounter_type = 53 AND estado_tpt2.concept_id = 165308 THEN estado_tpt2.obs_datetime
+                                    ELSE e2.encounter_datetime
+                                END
+                              ) < DATE_ADD(:endDate, INTERVAL 1 DAY)
+                          AND (
+                                (
+                                    CASE
+                                        WHEN e2.encounter_type = 53 AND estado_tpt2.concept_id = 165308 THEN estado_tpt2.obs_datetime
+                                        ELSE e2.encounter_datetime
+                                    END
+                                ) < (
+                                    CASE
+                                        WHEN e.encounter_type = 53 AND estado_tpt.concept_id = 165308 THEN estado_tpt.obs_datetime
+                                        ELSE e.encounter_datetime
+                                    END
+                                )
+                                OR (
+                                    (
+                                        CASE
+                                            WHEN e2.encounter_type = 53 AND estado_tpt2.concept_id = 165308 THEN estado_tpt2.obs_datetime
+                                            ELSE e2.encounter_datetime
+                                        END
+                                    ) = (
+                                        CASE
+                                            WHEN e.encounter_type = 53 AND estado_tpt.concept_id = 165308 THEN estado_tpt.obs_datetime
+                                            ELSE e.encounter_datetime
+                                        END
+                                    )
+                                    AND e2.encounter_id < e.encounter_id
+                                )
+                              )
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM obs regime_duplicado
+                        WHERE regime_duplicado.encounter_id = regime.encounter_id
+                          AND regime_duplicado.voided = 0
+                          AND regime_duplicado.concept_id = 23985
+                          AND regime_duplicado.value_coded IN (656, 23982, 165306, 23983, 23954, 23984, 165305)
+                          AND regime_duplicado.obs_id < regime.obs_id
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM obs estado_tpt_duplicado
+                        WHERE estado_tpt_duplicado.encounter_id = estado_tpt.encounter_id
+                          AND estado_tpt_duplicado.voided = 0
+                          AND estado_tpt_duplicado.value_coded = 1256
+                          AND estado_tpt_duplicado.concept_id = estado_tpt.concept_id
+                          AND estado_tpt_duplicado.obs_id < estado_tpt.obs_id
+                    )
+              )  in_3hp_tpi  ON in_3hp_tpi.patient_id=inscrito_da.patient_id
 
           /* ******************************** ultima carga viral  apos inscricao na DA*********** ******************************/
         LEFT JOIN(
@@ -937,10 +1112,10 @@ FROM
 ) i
 LEFT JOIN
 (
-    /* CV: última carga viral DEPOIS do início DA (por paciente) */
+    /* CV: última carga viral DEPOIS do início DA, com desempate por encounter_id e obs_id. */
     SELECT
-        m.patient_id,
-        m.data_ultima_carga,
+        i2.patient_id,
+        e.encounter_datetime AS data_ultima_carga,
         IF(o.value_numeric IS NOT NULL, o.value_numeric,
            CASE
              WHEN o.value_coded IS NULL THEN ''
@@ -958,77 +1133,84 @@ LEFT JOIN
         fr.name AS origem_resultado
     FROM
     (
-        /* pega a maior data de CV que seja > data_modelo */
         SELECT
-            i2.patient_id,
-            MAX(e2.encounter_datetime) AS data_ultima_carga
+            mdc_grouped_inicio.patient_id,
+            MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
         FROM
         (
-            /* repetir INICIO_DA aqui (MySQL 5.6 não tem CTE) */
             SELECT
-                mdc_grouped_inicio.patient_id,
-                MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
-            FROM
-            (
-                SELECT
-                    e.patient_id,
-                    MIN(e.encounter_datetime) AS data_modelo
-                FROM obs o
-                INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                INNER JOIN form f ON f.form_id = e.form_id
-                WHERE e.encounter_type IN (6, 9, 34, 35)
-                  AND e.voided = 0
-                  AND o.voided = 0
-                  AND o.concept_id = 165174
-                  AND o.value_coded = 165314
-                  AND o.location_id = :location
-                  AND e.encounter_datetime BETWEEN :startDate AND :endDate
-                GROUP BY e.patient_id
-
-                UNION ALL
-
-                SELECT
-                    e.patient_id,
-                    MIN(e.encounter_datetime) AS data_modelo
-                FROM obs o
-                INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                INNER JOIN form f ON f.form_id = e.form_id
-                WHERE e.encounter_type IN (6, 9, 34, 35)
-                  AND e.voided = 0
-                  AND o.voided = 0
-                  AND o.concept_id = 165174
-                  AND o.value_coded = 23732
-                  AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
-                  AND o.location_id = :location
-                  AND e.encounter_datetime BETWEEN :startDate AND :endDate
-                GROUP BY e.patient_id
-            ) mdc_grouped_inicio
-            GROUP BY mdc_grouped_inicio.patient_id
-        ) i2
-        INNER JOIN encounter e2
-            ON e2.patient_id = i2.patient_id
-           AND e2.voided = 0
-           AND e2.location_id = :location
-           AND e2.encounter_type IN (6, 9, 13, 51, 53)
-           AND e2.encounter_datetime >  i2.data_modelo
-        INNER JOIN obs o2
-            ON o2.encounter_id = e2.encounter_id
-           AND o2.voided = 0
-           AND o2.concept_id IN (856, 1305)
-        GROUP BY i2.patient_id
-    ) m
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            INNER JOIN form f ON f.form_id = e.form_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 165314
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
+            UNION ALL
+            SELECT
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            INNER JOIN form f ON f.form_id = e.form_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 23732
+              AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
+        ) mdc_grouped_inicio
+        GROUP BY mdc_grouped_inicio.patient_id
+    ) i2
     INNER JOIN encounter e
-        ON e.patient_id = m.patient_id
-       AND e.encounter_datetime = m.data_ultima_carga
+        ON e.patient_id = i2.patient_id
        AND e.voided = 0
        AND e.location_id = :location
        AND e.encounter_type IN (6, 9, 13, 51, 53)
+       AND e.encounter_datetime > i2.data_modelo
     INNER JOIN obs o
         ON o.encounter_id = e.encounter_id
        AND o.voided = 0
        AND o.concept_id IN (856, 1305)
     LEFT JOIN form fr
         ON fr.form_id = e.form_id
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM encounter e3
+        INNER JOIN obs o3
+            ON o3.encounter_id = e3.encounter_id
+           AND o3.voided = 0
+           AND o3.concept_id IN (856, 1305)
+        WHERE e3.patient_id = e.patient_id
+          AND e3.voided = 0
+          AND e3.location_id = e.location_id
+          AND e3.encounter_type IN (6, 9, 13, 51, 53)
+          AND e3.encounter_datetime > i2.data_modelo
+          AND (
+                e3.encounter_datetime > e.encounter_datetime
+                OR (
+                    e3.encounter_datetime = e.encounter_datetime
+                    AND e3.encounter_id > e.encounter_id
+                )
+              )
+    )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM obs o_dup
+        WHERE o_dup.encounter_id = o.encounter_id
+          AND o_dup.voided = 0
+          AND o_dup.concept_id IN (856, 1305)
+          AND o_dup.obs_id < o.obs_id
+    )
 ) cv
 ON cv.patient_id = i.patient_id
 
@@ -1085,10 +1267,10 @@ FROM
 ) i
 LEFT JOIN
 (
-    /* CV: última carga viral ANTES do início DA (por paciente) */
+    /* CV: última carga viral ANTES do início DA, com desempate por encounter_id e obs_id. */
     SELECT
-        m.patient_id,
-        m.data_ultima_carga,
+        i2.patient_id,
+        e.encounter_datetime AS data_ultima_carga,
         IF(o.value_numeric IS NOT NULL, o.value_numeric,
            CASE
              WHEN o.value_coded IS NULL THEN ''
@@ -1106,77 +1288,84 @@ LEFT JOIN
         fr.name AS origem_resultado
     FROM
     (
-        /* pega a maior data de CV que seja < data_modelo */
         SELECT
-            i2.patient_id,
-            MAX(e2.encounter_datetime) AS data_ultima_carga
+            mdc_grouped_inicio.patient_id,
+            MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
         FROM
         (
-            /* repetir INICIO_DA aqui (MySQL 5.6 não tem CTE) */
             SELECT
-                mdc_grouped_inicio.patient_id,
-                MIN(mdc_grouped_inicio.data_modelo) AS data_modelo
-            FROM
-            (
-                SELECT
-                    e.patient_id,
-                    MIN(e.encounter_datetime) AS data_modelo
-                FROM obs o
-                INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                INNER JOIN form f ON f.form_id = e.form_id
-                WHERE e.encounter_type IN (6, 9, 34, 35)
-                  AND e.voided = 0
-                  AND o.voided = 0
-                  AND o.concept_id = 165174
-                  AND o.value_coded = 165314
-                  AND o.location_id = :location
-                  AND e.encounter_datetime BETWEEN :startDate AND :endDate
-                GROUP BY e.patient_id
-
-                UNION ALL
-
-                SELECT
-                    e.patient_id,
-                    MIN(e.encounter_datetime) AS data_modelo
-                FROM obs o
-                INNER JOIN encounter e ON e.encounter_id = o.encounter_id
-                INNER JOIN form f ON f.form_id = e.form_id
-                WHERE e.encounter_type IN (6, 9, 34, 35)
-                  AND e.voided = 0
-                  AND o.voided = 0
-                  AND o.concept_id = 165174
-                  AND o.value_coded = 23732
-                  AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
-                  AND o.location_id = :location
-                  AND e.encounter_datetime BETWEEN :startDate AND :endDate
-                GROUP BY e.patient_id
-            ) mdc_grouped_inicio
-            GROUP BY mdc_grouped_inicio.patient_id
-        ) i2
-        INNER JOIN encounter e2
-            ON e2.patient_id = i2.patient_id
-           AND e2.voided = 0
-           AND e2.location_id = :location
-           AND e2.encounter_type IN (6, 9, 13, 51, 53)
-           AND e2.encounter_datetime < i2.data_modelo
-        INNER JOIN obs o2
-            ON o2.encounter_id = e2.encounter_id
-           AND o2.voided = 0
-           AND o2.concept_id IN (856, 1305)
-        GROUP BY i2.patient_id
-    ) m
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            INNER JOIN form f ON f.form_id = e.form_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 165314
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
+            UNION ALL
+            SELECT
+                e.patient_id,
+                MIN(e.encounter_datetime) AS data_modelo
+            FROM obs o
+            INNER JOIN encounter e ON e.encounter_id = o.encounter_id
+            INNER JOIN form f ON f.form_id = e.form_id
+            WHERE e.encounter_type IN (6, 9, 34, 35)
+              AND e.voided = 0
+              AND o.voided = 0
+              AND o.concept_id = 165174
+              AND o.value_coded = 23732
+              AND (o.value_text = 'DA-Inicio' OR o.comments = 'DA-Inicio')
+              AND o.location_id = :location
+              AND e.encounter_datetime BETWEEN :startDate AND :endDate
+            GROUP BY e.patient_id
+        ) mdc_grouped_inicio
+        GROUP BY mdc_grouped_inicio.patient_id
+    ) i2
     INNER JOIN encounter e
-        ON e.patient_id = m.patient_id
-       AND e.encounter_datetime = m.data_ultima_carga
+        ON e.patient_id = i2.patient_id
        AND e.voided = 0
        AND e.location_id = :location
        AND e.encounter_type IN (6, 9, 13, 51, 53)
+       AND e.encounter_datetime < i2.data_modelo
     INNER JOIN obs o
         ON o.encounter_id = e.encounter_id
        AND o.voided = 0
        AND o.concept_id IN (856, 1305)
     LEFT JOIN form fr
         ON fr.form_id = e.form_id
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM encounter e3
+        INNER JOIN obs o3
+            ON o3.encounter_id = e3.encounter_id
+           AND o3.voided = 0
+           AND o3.concept_id IN (856, 1305)
+        WHERE e3.patient_id = e.patient_id
+          AND e3.voided = 0
+          AND e3.location_id = e.location_id
+          AND e3.encounter_type IN (6, 9, 13, 51, 53)
+          AND e3.encounter_datetime < i2.data_modelo
+          AND (
+                e3.encounter_datetime > e.encounter_datetime
+                OR (
+                    e3.encounter_datetime = e.encounter_datetime
+                    AND e3.encounter_id > e.encounter_id
+                )
+              )
+    )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM obs o_dup
+        WHERE o_dup.encounter_id = o.encounter_id
+          AND o_dup.voided = 0
+          AND o_dup.concept_id IN (856, 1305)
+          AND o_dup.obs_id < o.obs_id
+    )
 ) cv
 ON cv.patient_id = i.patient_id
 
@@ -1222,17 +1411,131 @@ LEFT JOIN (
 	/* * **************************** -- Completaram TPT no FILT ou FC  **** ********************************************** */
 LEFT JOIN
 	(
-select fim_tpt.patient_id,max(fim_tpt.data_fim_tpt) data_end_tpt  -- Completaram TPT no FILT ou FC
-	from
-	(
-		select 	p.patient_id,max(e.encounter_datetime) data_fim_tpt
-		from	patient p
-				inner join encounter e on p.patient_id=e.patient_id
-				inner join obs o on o.encounter_id=e.encounter_id
-		where 	e.voided=0 and p.voided=0 and e.encounter_datetime between :startDate and :endDate and
-				o.voided=0 and o.concept_id in (6122,23987,165308) and o.value_coded=1267 and e.encounter_type in (6,9,53,60) and  e.location_id=:location
-		group by p.patient_id )  fim_tpt group by patient_id
-	) end_tpt ON end_tpt.patient_id=inscrito_da.patient_id -- AND data_consulta=data_pick_up
+        /* Historico de fim de TPT ate :endDate.
+           Inclui encounter 53 (Ficha Resumo); para 53 usa obs_datetime do 165308
+           como data clinica do evento. */
+        SELECT
+            e.patient_id,
+            CASE
+                WHEN e.encounter_type = 53 AND estado_tpt.concept_id = 165308 THEN estado_tpt.obs_datetime
+                ELSE e.encounter_datetime
+            END AS data_end_tpt
+        FROM patient p
+        INNER JOIN encounter e
+            ON e.patient_id = p.patient_id
+        INNER JOIN obs estado_tpt
+            ON estado_tpt.encounter_id = e.encounter_id
+           AND estado_tpt.voided = 0
+           AND estado_tpt.value_coded = 1267
+           AND (
+                (e.encounter_type IN (6, 9, 53) AND estado_tpt.concept_id = 165308)
+                OR (e.encounter_type = 60 AND estado_tpt.concept_id = 23987)
+           )
+        WHERE p.voided = 0
+          AND e.voided = 0
+          AND e.location_id = :location
+          AND e.encounter_type IN (6, 9, 53, 60)
+          /* Nao limita por :startDate para permitir mostrar fim TPT historico
+             de pacientes inscritos na DA dentro do periodo do relatorio. */
+          AND (
+                CASE
+                    WHEN e.encounter_type = 53 AND estado_tpt.concept_id = 165308 THEN estado_tpt.obs_datetime
+                    ELSE e.encounter_datetime
+                END
+              ) < DATE_ADD(:endDate, INTERVAL 1 DAY)
+          AND EXISTS (
+                SELECT 1
+                FROM encounter e_inicio
+                INNER JOIN obs regime_inicio
+                    ON regime_inicio.encounter_id = e_inicio.encounter_id
+                   AND regime_inicio.voided = 0
+                   AND regime_inicio.concept_id = 23985
+                   AND regime_inicio.value_coded IN (656, 23982, 165306, 23983, 23954, 23984, 165305)
+                INNER JOIN obs estado_inicio
+                    ON estado_inicio.encounter_id = e_inicio.encounter_id
+                   AND estado_inicio.voided = 0
+                   AND estado_inicio.value_coded = 1256
+                   AND (
+                        (e_inicio.encounter_type IN (6, 9, 53) AND estado_inicio.concept_id = 165308)
+                        OR (e_inicio.encounter_type = 60 AND estado_inicio.concept_id = 23987)
+                   )
+                WHERE e_inicio.voided = 0
+                  AND e_inicio.patient_id = e.patient_id
+                  AND e_inicio.location_id = e.location_id
+                  AND e_inicio.encounter_type IN (6, 9, 53, 60)
+                  AND (
+                        CASE
+                            WHEN e_inicio.encounter_type = 53 AND estado_inicio.concept_id = 165308 THEN estado_inicio.obs_datetime
+                            ELSE e_inicio.encounter_datetime
+                        END
+                      ) <= (
+                        CASE
+                            WHEN e.encounter_type = 53 AND estado_tpt.concept_id = 165308 THEN estado_tpt.obs_datetime
+                            ELSE e.encounter_datetime
+                        END
+                      )
+          )
+          AND NOT EXISTS (
+                /* Mantem apenas o ultimo fim historico do paciente
+                   considerando a data clinica do TPT. */
+                SELECT 1
+                FROM encounter e2
+                INNER JOIN obs estado_tpt2
+                    ON estado_tpt2.encounter_id = e2.encounter_id
+                   AND estado_tpt2.voided = 0
+                   AND estado_tpt2.value_coded = 1267
+                   AND (
+                        (e2.encounter_type IN (6, 9, 53) AND estado_tpt2.concept_id = 165308)
+                        OR (e2.encounter_type = 60 AND estado_tpt2.concept_id = 23987)
+                   )
+                WHERE e2.voided = 0
+                  AND e2.patient_id = e.patient_id
+                  AND e2.location_id = e.location_id
+                  AND e2.encounter_type IN (6, 9, 53, 60)
+                  AND (
+                        CASE
+                            WHEN e2.encounter_type = 53 AND estado_tpt2.concept_id = 165308 THEN estado_tpt2.obs_datetime
+                            ELSE e2.encounter_datetime
+                        END
+                      ) < DATE_ADD(:endDate, INTERVAL 1 DAY)
+                  AND (
+                        (
+                            CASE
+                                WHEN e2.encounter_type = 53 AND estado_tpt2.concept_id = 165308 THEN estado_tpt2.obs_datetime
+                                ELSE e2.encounter_datetime
+                            END
+                        ) > (
+                            CASE
+                                WHEN e.encounter_type = 53 AND estado_tpt.concept_id = 165308 THEN estado_tpt.obs_datetime
+                                ELSE e.encounter_datetime
+                            END
+                        )
+                        OR (
+                            (
+                                CASE
+                                    WHEN e2.encounter_type = 53 AND estado_tpt2.concept_id = 165308 THEN estado_tpt2.obs_datetime
+                                    ELSE e2.encounter_datetime
+                                END
+                            ) = (
+                                CASE
+                                    WHEN e.encounter_type = 53 AND estado_tpt.concept_id = 165308 THEN estado_tpt.obs_datetime
+                                    ELSE e.encounter_datetime
+                                END
+                            )
+                            AND e2.encounter_id > e.encounter_id
+                        )
+                  )
+          )
+          AND NOT EXISTS (
+                SELECT 1
+                FROM obs estado_tpt_dup
+                WHERE estado_tpt_dup.encounter_id = estado_tpt.encounter_id
+                  AND estado_tpt_dup.voided = 0
+                  AND estado_tpt_dup.value_coded = 1267
+                  AND estado_tpt_dup.concept_id = estado_tpt.concept_id
+                  AND estado_tpt_dup.obs_id < estado_tpt.obs_id
+          )
+	) end_tpt ON end_tpt.patient_id=inscrito_da.patient_id
 
 
 
@@ -1280,7 +1583,7 @@ select fim_tpt.patient_id,max(fim_tpt.data_fim_tpt) data_end_tpt  -- Completaram
 			from 	patient p
 					inner join patient_program pg on p.patient_id=pg.patient_id
 					inner join patient_state ps on pg.patient_program_id=ps.patient_program_id
-			where 	pg.voided=0 and ps.voided=0 and p.voided=0 and
+			where 	pg.voided=0 and ps.voided=0 and p.voided=0 and ps.start_date between :startDate and :endDate and
 					pg.program_id=2 and ps.state in (7,8,9,10) and ps.end_date is null and location_id=:location
                   union all
                    Select ultimavisita_perm_tarv.patient_id, ultimavisita_perm_tarv.encounter_datetime ,
@@ -1294,7 +1597,7 @@ select fim_tpt.patient_id,max(fim_tpt.data_fim_tpt) data_end_tpt  -- Completaram
 
 			(	select 	e.patient_id,max(encounter_datetime) as encounter_datetime, e.encounter_type
 				from 	encounter e
-                        inner join obs o on o.encounter_id =e.encounter_id
+                        inner join obs o on o.encounter_id =e.encounter_id and e.encounter_datetime between :startDate and :endDate
 				       and 	e.voided=0  and o.voided=0   and o.concept_id=6273 and e.encounter_type IN (6,9)  and e.location_id=:location
 				group by e.patient_id
 			) ultimavisita_perm_tarv

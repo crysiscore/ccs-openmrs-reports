@@ -72,19 +72,19 @@ use altomae;
 select * from encounter_type where name in ('PTV: PRE-NATAL INICIAL');
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ("e1dae234-1d5f-11e0-b929-000c29ad1d07"  )
+where c.uuid in ('e2297477-2ca5-4eae-8abf-6b69b5c351b0','e1da001c-1d5f-11e0-b929-000c29ad1d07'  )
  and locale ='pt';
 
 --  Modo de dispensa FAPSS
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ('40a9a12b-1205-4a55-bb93-caf15452bf61')
+where c.uuid in ('b6c4d473-2af5-4c4d-a9bb-ad3779fa5579','e1d9ef28-1d5f-11e0-b929-000c29ad1d07','e1d9facc-1d5f-11e0-b929-000c29ad1d07')
  and locale ='pt';
 
 --  Modo de dispensa FAPSS
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in (   'fef178f2-d4c9-4035-9989-11c9afe81ea3')
+where c.uuid in ( '40a9a12b-1205-4a55-bb93-caf15452bf61')
  and locale ='pt';
 
   -- Avaliacao Nutricional : Grau
@@ -127,7 +127,8 @@ where cn.name like '%sarcoma%'
 
 select c.concept_id,cn.name from concept c
 inner join concept_name cn on c.concept_id=cn.concept_id
-where c.uuid in ('e1da2704-1d5f-11e0-b929-000c29ad1d07','e1da2812-1d5f-11e0-b929-000c29ad1d07','cc8ef88c-6ab6-4404-a036-d415bc42cc1c' ,'4df535db-b8c9-4759-85bb-f4bcb5bebdc6')
+where c.uuid in ('9db4ce3b-4c1c-45dd-905f-c984a052f26e','e1d43e52-1d5f-11e0-b929-000c29ad1d07','bce7d965-3396-4667-8294-aa5260c26334',
+                 'b7119181-4186-4680-9b9e-8ae01cb40073','c3e11134-fac6-4577-9f99-a3d42cfbc5d1')
  and locale ='pt';
 
 

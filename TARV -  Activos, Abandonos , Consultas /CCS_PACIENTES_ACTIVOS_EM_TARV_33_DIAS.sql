@@ -91,6 +91,25 @@ Modification Date - 25/02/2026
 Modification Reason:
         • Bug fix- Ultimo cd4 entre o numerico seqmi-quantitativo e percentual
 
+
+Modified  By - Agnaldo  Samuel
+Modification Date - 18/03/2026
+Modification Reason: Ultima CV entre o numerico e qualitativo
+Em vez de:
+	•	primeiro descobrir a última encounter
+	•	e depois decidir entre numérico/qualitativo com IF
+
+faz melhor isto:
+	•	criar uma lista única de candidatos de CV:
+	•	numéricos (concept_id = 856)
+	•	qualitativos (concept_id = 1305)
+	•	dar a cada candidato:
+	•	patient_id
+	•	data_ultima_carga
+	•	valor_ultima_carga
+	•	origem_resultado
+	•	ordenar por data decrescente
+	•	ficar com apenas o primeiro por paciente
 */
 
 
@@ -1410,42 +1429,70 @@ LEFT JOIN (
 						GROUP BY pg.patient_id
         ) ptv ON ptv.patient_id= inicio_real.patient_id
 
-          /* ******************************** ultima carga viral *********** ******************************/
-        LEFT JOIN(
+             /* ******************************** ultima carga viral *********** ******************************/
+        LEFT JOIN (
+            SELECT x.patient_id,
+                   x.valor_ultima_carga,
+                   x.data_ultima_carga,
+                   x.origem_resultado
+            FROM (
+                SELECT d.*,
+                       @rn_cv := IF(@p_cv = d.patient_id, @rn_cv + 1, 1) AS rn,
+                       @p_cv := d.patient_id
+                FROM (
+                    /* CV NUMERICA */
+                    SELECT e.patient_id,
+                           CAST(o.value_numeric AS CHAR) AS valor_ultima_carga,
+                           COALESCE(o.obs_datetime, e.encounter_datetime) AS data_ultima_carga,
+                           fr.name AS origem_resultado,
+                           o.obs_id
+                    FROM encounter e
+                    INNER JOIN obs o ON o.encounter_id = e.encounter_id
+                    LEFT JOIN form fr ON fr.form_id = e.form_id
+                    WHERE e.voided = 0
+                      AND o.voided = 0
+                      AND e.location_id = :location
+                      AND e.encounter_type IN (6,9,13,51,53)
+                      AND o.concept_id = 856
+                      AND o.value_numeric IS NOT NULL
+                      AND e.encounter_datetime <= :endDate
 
-        SELECT 	e.patient_id,
-       IF(o.value_numeric IS NOT NULL, o.value_numeric,
-           CASE
-             WHEN o.value_coded IS NULL THEN ''
-             WHEN o.value_coded = 1306  THEN 'Nivel baixo de detencao'
-             WHEN o.value_coded = 23905 THEN 'Menor que 10 copias/ml'
-             WHEN o.value_coded = 23906 THEN 'Menor que 20 copias/ml'
-             WHEN o.value_coded = 23907 THEN 'Menor que 40 copias/ml'
-             WHEN o.value_coded = 23908 THEN 'Menor que 400 copias/ml'
-             WHEN o.value_coded = 23904 THEN 'Menor que 839 copias/ml'
-             WHEN o.value_coded = 165331 THEN CONCAT('MENOR QUE ', COALESCE(o.comments,''), ' Copias/ml')
-             WHEN o.value_coded = 23814 THEN 'CARGA VIRAL INDETECTAVEL'
-             ELSE CONCAT('OUTRO - ', COALESCE(o.value_coded,''))
-           END
-        ) AS valor_ultima_carga,
-                e.encounter_datetime AS data_ultima_carga,
-                fr.name AS origem_resultado
-                FROM  encounter e
-                INNER JOIN	(
-							SELECT 	e.patient_id,MAX(encounter_datetime) AS data_cv
-							FROM encounter e INNER JOIN obs o ON e.encounter_id=o.encounter_id
-							WHERE e.encounter_type IN (6,9,13,51,53) AND e.voided=0 AND o.voided=0 AND o.concept_id IN( 856, 1305)
-							GROUP BY patient_id
-				) ult_cv
-                ON e.patient_id=ult_cv.patient_id
-				INNER JOIN obs o ON o.encounter_id=e.encounter_id
-                 LEFT JOIN form fr ON fr.form_id = e.form_id
-                 WHERE e.encounter_datetime=ult_cv.data_cv
-				AND	e.voided=0  AND e.location_id= :location   AND e.encounter_type IN (6,9,13,51,53) AND
-				o.voided=0 AND 	o.concept_id IN( 856, 1305) /* AND  e.encounter_datetime <= :endDate */
-                GROUP BY e.patient_id
+                    UNION ALL
 
-		) cv ON cv.patient_id =  inicio_real.patient_id
+                    /* CV QUALITATIVA */
+                    SELECT e.patient_id,
+                           CASE
+                               WHEN o.value_coded IS NULL THEN ''
+                               WHEN o.value_coded = 1306  THEN 'Nivel baixo de detencao'
+                               WHEN o.value_coded = 23905 THEN 'Menor que 10 copias/ml'
+                               WHEN o.value_coded = 23906 THEN 'Menor que 20 copias/ml'
+                               WHEN o.value_coded = 23907 THEN 'Menor que 40 copias/ml'
+                               WHEN o.value_coded = 23908 THEN 'Menor que 400 copias/ml'
+                               WHEN o.value_coded = 23904 THEN 'Menor que 839 copias/ml'
+                               WHEN o.value_coded = 165331 THEN CONCAT('MENOR QUE ', COALESCE(o.comments,''), ' Copias/ml')
+                               WHEN o.value_coded = 23814 THEN 'CARGA VIRAL INDETECTAVEL'
+                               ELSE CONCAT('OUTRO - ', COALESCE(o.value_coded,''))
+                           END AS valor_ultima_carga,
+                           COALESCE(o.obs_datetime, e.encounter_datetime) AS data_ultima_carga,
+                           fr.name AS origem_resultado,
+                           o.obs_id
+                    FROM encounter e
+                    INNER JOIN obs o ON o.encounter_id = e.encounter_id
+                    LEFT JOIN form fr ON fr.form_id = e.form_id
+                    WHERE e.voided = 0
+                      AND o.voided = 0
+                      AND e.location_id = :location
+                      AND e.encounter_type IN (6,9,13,51,53)
+                      AND o.concept_id = 1305
+                      AND o.value_coded IS NOT NULL
+                      AND e.encounter_datetime <= :endDate
+
+                    ORDER BY patient_id, data_ultima_carga DESC, obs_id DESC
+                ) d
+                CROSS JOIN (SELECT @p_cv := NULL, @rn_cv := 0) vars_cv
+            ) x
+            WHERE x.rn = 1
+        ) cv ON cv.patient_id = inicio_real.patient_id
 
  /*****************************   ultimo levantamento ************** **********************
 		LEFT JOIN
