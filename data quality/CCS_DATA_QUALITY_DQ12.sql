@@ -18,6 +18,11 @@ Change Date: 24/11/2026
 - Alinha a data de início de TARV com o DAH. Inclui a primeira FILA (tipo 18) e a data de levantamento registada no Master Card (tipo 52, conceito 23866) no cálculo da primeira evidência válida na unidade até endDate.
 - Usa a data da ficha de Recepção para a elegibilidade do RDQ12 e a data de levantamento preenchida para o cálculo da data de início.
 - Validado em MySQL 5.6 no CS Xipamanine. Para 24/11/2026, as datas coincidiram com as cinco fontes do DAH para os 78 pacientes (48 com data). As datas e as listas também se mantiveram face à versão anterior para 31/12/2024 e 31/12/2025.
+
+Revisao:   Agnaldo Samuel
+Change Date: 24/11/2026
+- Acrescenta a próxima consulta da última ficha clínica (1410), o último tipo de dispensa (23739) e o último sector da Ficha Resumo (165/23783), sem alterar os critérios de elegibilidade.
+- Teste no MySQL 5.6, CS Xipamanine, endDate de 24/11/2026: 78 pacientes e colunas anteriores idênticas. Os novos campos coincidiram com os registos de origem: 53 datas de próxima consulta, 52 tipos de dispensa e 26 sectores.
 */
 SELECT
     consulta.patient_id,
@@ -70,7 +75,67 @@ SELECT
               AND farmacia.location_id = :location
               AND farmacia.encounter_datetime < DATE_ADD(DATE(:endDate), INTERVAL 1 DAY)
         ), DATE_ADD(DATE(:endDate), INTERVAL 1 DAY))
-    ), DATE_ADD(DATE(:endDate), INTERVAL 1 DAY)), '%d/%m/%Y') END AS data_inicio
+    ), DATE_ADD(DATE(:endDate), INTERVAL 1 DAY)), '%d/%m/%Y') END AS data_inicio,
+    DATE_FORMAT((
+        SELECT proxima.value_datetime
+        FROM obs proxima
+        WHERE proxima.encounter_id = (
+            SELECT MAX(e.encounter_id)
+            FROM encounter e
+            WHERE e.patient_id = consulta.patient_id
+              AND e.encounter_datetime = consulta.data_seguimento
+              AND e.encounter_type IN (6, 9)
+              AND e.location_id = :location
+              AND e.voided = 0
+        )
+          AND proxima.concept_id = 1410
+          AND proxima.voided = 0
+          AND proxima.value_datetime IS NOT NULL
+        ORDER BY proxima.obs_id DESC
+        LIMIT 1
+    ), '%d/%m/%Y') AS data_proxima_consulta,
+    CASE (
+        SELECT dispensa.value_coded
+        FROM encounter e
+        INNER JOIN obs dispensa ON dispensa.encounter_id = e.encounter_id
+        WHERE e.patient_id = consulta.patient_id
+          AND e.encounter_type IN (6, 9, 53)
+          AND e.location_id = :location
+          AND e.encounter_datetime < DATE_ADD(DATE(:endDate), INTERVAL 1 DAY)
+          AND e.voided = 0
+          AND dispensa.concept_id = 23739
+          AND dispensa.voided = 0
+          AND dispensa.value_coded IS NOT NULL
+        ORDER BY e.encounter_datetime DESC, e.encounter_id DESC, dispensa.obs_id DESC
+        LIMIT 1
+    )
+        WHEN 1098 THEN 'DISPENSA MENSAL'
+        WHEN 165340 THEN 'DISPENSA BIMESTRAL'
+        WHEN 23720 THEN 'DISPENSA TRIMESTRAL'
+        WHEN 23888 THEN 'DISPENSA SEMESTRAL'
+        WHEN 165314 THEN 'DISPENSA ANUAL'
+    END AS tipo_dispensa,
+    CASE (
+        SELECT sector_obs.value_coded
+        FROM encounter e
+        INNER JOIN obs sector_obs ON sector_obs.encounter_id = e.encounter_id
+        WHERE e.patient_id = consulta.patient_id
+          AND e.form_id = 165
+          AND e.location_id = :location
+          AND e.encounter_datetime < DATE_ADD(DATE(:endDate), INTERVAL 1 DAY)
+          AND e.voided = 0
+          AND sector_obs.concept_id = 23783
+          AND sector_obs.voided = 0
+          AND sector_obs.value_coded IS NOT NULL
+        ORDER BY e.encounter_datetime DESC, e.encounter_id DESC, sector_obs.obs_id DESC
+        LIMIT 1
+    )
+        WHEN 1414 THEN 'TB'
+        WHEN 1987 THEN 'SAAJ'
+        WHEN 1985 THEN 'CPN/G'
+        WHEN 1872 THEN 'CCR/L'
+        WHEN 21275 THEN 'Clínica'
+    END AS sector
 FROM (
     SELECT e.patient_id, MAX(e.encounter_datetime) AS data_seguimento
     FROM encounter e
